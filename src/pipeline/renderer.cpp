@@ -51,7 +51,7 @@ struct sRenderable {
 	GFX::Mesh* mesh = nullptr; //the thing we want to render
 	Material* material = nullptr;
 	Matrix44 model; //where we want to render it
-
+	//hola 
 
 };
 
