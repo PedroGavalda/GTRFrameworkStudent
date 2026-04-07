@@ -20,7 +20,7 @@ namespace SCN {
 		MASK,
 		BLEND
 	};
-
+	//as
 	struct Sampler {
 		GFX::Texture* texture;
 		int uv_channel;
