@@ -45,6 +45,8 @@ void Renderer::setupScene()
 
 std::vector<sRenderable> render_list;
 
+std::vector<LightEntity*> light_list;
+
 void parseNode(Node* node) {
 	if (!node) {
 		return; //not analyze empty nodes
@@ -75,21 +77,20 @@ void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam) {
 			continue;
 		}
 
+		// PREFABS
 		if (entity->getType() == eEntityType::PREFAB) {
 			//
 			PrefabEntity* e = (PrefabEntity*)entity;
 
-			parseNode(&(entity->root));
+			parseNode(&(e->root));
 
 		}
 
-
-		// Store Prefab Entitys
-		// ...
-		//		Store Children Prefab Entities
-
-		// Store Lights
-		// ...
+		// LIGHTS
+		if (entity->getType() == eEntityType::LIGHT) {
+			LightEntity* light = (LightEntity*)entity;
+			light_list.push_back(light);
+		}
 	}
 
 }
@@ -226,7 +227,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	glEnable(GL_DEPTH_TEST);
 
 	//chose a shader
-	shader = GFX::Shader::Get("texture");
+	shader = GFX::Shader::Get("phong");
 
 	assert(glGetError() == GL_NO_ERROR);
 
@@ -234,6 +235,13 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	if (!shader)
 		return;
 	shader->enable();
+
+	LightEntity* light = light_list.empty() ? nullptr : light_list[0];
+	if (light) {
+		shader->setUniform("u_light_position", light->root.getGlobalMatrix().getTranslation());
+		shader->setUniform("u_light_color", light->color);
+		shader->setUniform("u_light_intensity", light->intensity);
+	}
 
 	material->bind(shader);
 

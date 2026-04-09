@@ -4,6 +4,8 @@ texture basic.vs texture.fs
 skybox basic.vs skybox.fs
 depth quad.vs depth.fs
 multi basic.vs multi.fs
+//mio
+phong basic.vs phong.fs
 
 \perturbNormal
 
@@ -243,4 +245,46 @@ void main()
 
 	//calcule the position of the vertex using the matrices
 	gl_Position = u_viewprojection * vec4( v_world_position, 1.0 );
+}
+
+//mio
+\phong.fs
+
+#version 330 core
+
+in vec3 v_world_position;
+in vec3 v_normal;
+in vec2 v_uv;
+
+uniform vec4 u_color;
+uniform sampler2D u_texture;
+
+uniform vec3 u_camera_position;
+
+uniform vec3 u_light_position;
+uniform vec3 u_light_color;
+uniform float u_light_intensity;
+
+uniform float u_shininess;
+
+out vec4 FragColor;
+
+void main() 
+{
+	vec3 N = normalize(v_normal);
+	vec3 L = normalize(u_light_position - v_world_position);
+	vec3 V = normalize(u_camera_position - v_world_position);
+	vec3 R = reflect(-L, N);
+	
+	//(REVISAR ESTOS)
+	vec3 ambient = u_color.rgb * 0.1;
+	vec3 diffuse = u_color.rgb * max(dot(N, L), 0.0) * u_light_color;
+	vec3 specular = u_color.rgb * pow(max(dot(R, V), 0.0), u_shininess);
+
+	// ATENUACION
+	float distance = length(u_light_position - v_world_position);
+	float attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
+
+	vec3 final_color = ambient + (diffuse + specular) * u_light_intensity * attenuation;
+	FragColor = vec4(final_color, u_color.a);
 }
