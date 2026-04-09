@@ -127,10 +127,31 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	// HERE =====================
 	// TODO: RENDER RENDERABLES
 	// ==========================
-	for (sRenderable call : render_list) {
-		renderMeshWithMaterial(call.model, call.mesh, call.material);
+	std::vector<sRenderable*> opaque;
+	std::vector<sRenderable*> transparent;
+	for (auto& r : render_list){
+		if (!r.material) continue;
+		if (r.material->alpha_mode == BLEND)
+			transparent.push_back(&r);
+		else
+			opaque.push_back(&r);
 	}
-
+	std::sort(opaque.begin(), opaque.end(), [&](sRenderable* a, sRenderable* b){
+		float da = (a->model.getTranslation() - camera->eye).length();
+		float db = (b->model.getTranslation() - camera->eye).length();
+		return da < db;}
+	);
+	std::sort(transparent.begin(), transparent.end(), [&](sRenderable* a, sRenderable* b) {
+		float da = (a->model.getTranslation() - camera->eye).length();
+		float db = (b->model.getTranslation() - camera->eye).length();
+		return da > db;}
+	);
+	for (auto* r : opaque) {
+		renderMeshWithMaterial(r->model, r->mesh, r->material);
+	}
+	for (auto* r : transparent) {
+		renderMeshWithMaterial(r->model, r->mesh, r->material);
+	}
 }
 
 
