@@ -2,6 +2,19 @@
 #include "scene.h"
 #include "prefab.h"
 
+#include "camera.h"
+#include "../gfx/gfx.h"
+#include "../gfx/shader.h"
+#include "../gfx/mesh.h"
+#include "../gfx/texture.h"
+#include "../gfx/fbo.h"
+#include "../pipeline/prefab.h"
+#include "../pipeline/material.h"
+#include "../pipeline/animation.h"
+#include "../utils/utils.h"
+#include "../extra/hdre.h"
+#include "../core/ui.h"
+
 #include "light.h"
 
 //forward declarations
@@ -13,10 +26,18 @@ namespace GFX {
 	class FBO;
 }
 
+
+
 namespace SCN {
 
 	class Prefab;
 	class Material;
+	struct sRenderable {
+		GFX::Mesh* mesh = nullptr; //the thing we want to render
+		Material* material = nullptr;
+		Matrix44 model; //where we want to render it 
+
+	};
 
 	// This class is in charge of rendering anything in our system.
 	// Separating the render from anything else makes the code cleaner
@@ -51,6 +72,8 @@ namespace SCN {
 		void renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material);
 
 		void showUI();
+
+		bool is_in_frustum(sRenderable* r);
 	};
 
 };

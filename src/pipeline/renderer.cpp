@@ -15,9 +15,6 @@
 #include "../extra/hdre.h"
 #include "../core/ui.h"
 
-#include "scene.h"
-
-
 using namespace SCN;
 
 //some globals
@@ -45,15 +42,6 @@ void Renderer::setupScene()
 	else
 		skybox_cubemap = nullptr;
 }
-
-
-struct sRenderable {
-	GFX::Mesh* mesh = nullptr; //the thing we want to render
-	Material* material = nullptr;
-	Matrix44 model; //where we want to render it
-	//hola 
-
-};
 
 std::vector<sRenderable> render_list;
 
@@ -147,13 +135,21 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 		return da > db;}
 	);
 	for (auto* r : opaque) {
-		renderMeshWithMaterial(r->model, r->mesh, r->material);
+		if (is_in_frustum(r)) {
+			renderMeshWithMaterial(r->model, r->mesh, r->material);
+		}
 	}
 	for (auto* r : transparent) {
-		renderMeshWithMaterial(r->model, r->mesh, r->material);
+		if (is_in_frustum(r)) {
+			renderMeshWithMaterial(r->model, r->mesh, r->material);
+		}
 	}
+
 }
 
+bool Renderer::is_in_frustum(sRenderable* r) {
+	return true;
+}
 
 void Renderer::renderSkybox(GFX::Texture* cubemap)
 {
