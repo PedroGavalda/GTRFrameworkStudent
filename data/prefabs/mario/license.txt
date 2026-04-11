@@ -1,0 +1,11 @@
+Model Information:
+* title:	Mario 64 Meme
+* source:	https://sketchfab.com/3d-models/mario-64-meme-07fc88ba7e95492b93bc4f7d865fc9e4
+* author:	Meme Models 3D (https://sketchfab.com/mememodels3d)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Mario 64 Meme" (https://sketchfab.com/3d-models/mario-64-meme-07fc88ba7e95492b93bc4f7d865fc9e4) by Meme Models 3D (https://sketchfab.com/mememodels3d) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

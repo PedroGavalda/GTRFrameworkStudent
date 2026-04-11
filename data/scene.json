@@ -82,6 +82,14 @@
 			"filename":	"prefabs/trash_can/scene.gltf"
 		}, {
 			"type":	"PREFAB",
+			"name":	"mario",
+			"layers":	3,
+			"position":	[-2, 0, 1],
+			"scale":	[0.25, 0.25, 0.25],
+			"rotation":	[0, 1, 0, 0],
+			"filename":	"prefabs/mario/scene.gltf"
+		}, {
+			"type":	"PREFAB",
 			"name":	"tree",
 			"layers":	3,
 			"position":	[0.47999969124794, 0.0900000035762787, 3.7400009632110596],
