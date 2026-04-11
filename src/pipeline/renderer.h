@@ -74,6 +74,8 @@ namespace SCN {
 		void showUI();
 
 		bool is_in_frustum(sRenderable* r, Camera* camera);
+
+		void updateLights();
 	};
 
 };

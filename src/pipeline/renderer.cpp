@@ -135,6 +135,7 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 		float db = (b->model.getTranslation() - camera->eye).length();
 		return da > db;}
 	);
+	updateLights();
 	for (auto* r : opaque) {
 		if (is_in_frustum(r, camera)) {
 			renderMeshWithMaterial(r->model, r->mesh, r->material);
@@ -212,6 +213,23 @@ void Renderer::renderSkybox(GFX::Texture* cubemap)
 	glEnable(GL_DEPTH_TEST);
 }
 
+
+std::vector<vec3> positions;
+std::vector<vec3> colors;
+std::vector<float> intensities;
+
+
+void Renderer::updateLights() {
+	positions.clear();
+	colors.clear();
+	intensities.clear();
+	for (LightEntity* l : light_list) {
+		positions.push_back(l->root.getGlobalMatrix().getTranslation());
+		colors.push_back(l->color);
+		intensities.push_back(l->intensity);
+	}
+}
+
 // Renders a mesh given its transform and material
 void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material)
 {
@@ -239,16 +257,6 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	int num_lights = light_list.size();
 	shader->setUniform("u_num_lights", num_lights);
 
-	std::vector<vec3> positions;
-	std::vector<vec3> colors;
-	std::vector<float> intensities;
-
-	for (LightEntity* l : light_list) {
-		positions.push_back(l->root.getGlobalMatrix().getTranslation());
-		colors.push_back(l->color);
-		intensities.push_back(l->intensity);
-	}
-	
 	if (positions.empty() || colors.empty()) {
 		return;
 	}

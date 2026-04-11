@@ -282,13 +282,15 @@ void main()
 	vec3 ambient = base_color.rgb * u_ambient_light;
 	vec3 diffuse = vec3(0.0);
 	vec3 specular = vec3(0.0);
-	for(int i=0;i<u_num_lights;i++){
-		vec3 L = normalize(u_light_position[i] - v_world_position);
-		vec3 R = reflect(-L, N);
-		float distance = length(u_light_position[i] - v_world_position);
-		float attenuation = 1.0 / (distance * distance);
-		diffuse += base_color.rgb * u_light_color[i] * u_light_intensity[i] * max(dot(N, L), 0.0) * attenuation;
-		specular += u_light_color[i] * u_light_intensity[i] * pow(max(dot(R, V), 0.0), u_shininess) * attenuation;
+	for(int i=0;i<MAX_LIGHTS;i++){
+		if (i<u_num_lights){
+			vec3 L = normalize(u_light_position[i] - v_world_position);
+			vec3 R = reflect(-L, N);
+			float distance = length(u_light_position[i] - v_world_position);
+			float attenuation = 1.0 / (distance * distance);
+			diffuse += base_color.rgb * u_light_color[i] * u_light_intensity[i] * max(dot(N, L), 0.0) * attenuation;
+			specular += u_light_color[i] * u_light_intensity[i] * pow(max(dot(R, V), 0.0), u_shininess) * attenuation;
+		}
 	}	
 
 	// vec3 final_color = ambient + (diffuse + specular) * u_light_intensity * attenuation;
