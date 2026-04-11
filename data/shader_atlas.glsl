@@ -265,6 +265,7 @@ uniform vec3 u_light_position;
 uniform vec3 u_light_color;
 uniform float u_light_intensity;
 
+uniform vec3 u_ambient_light;
 uniform float u_shininess;
 
 out vec4 FragColor;
@@ -275,16 +276,17 @@ void main()
 	vec3 L = normalize(u_light_position - v_world_position);
 	vec3 V = normalize(u_camera_position - v_world_position);
 	vec3 R = reflect(-L, N);
-	
-	//(REVISAR ESTOS)
-	vec3 ambient = u_color.rgb * 0.1;
-	vec3 diffuse = u_color.rgb * max(dot(N, L), 0.0) * u_light_color;
-	vec3 specular = u_color.rgb * pow(max(dot(R, V), 0.0), u_shininess);
 
-	// ATENUACION
+	// color del material
+	vec4 base_color = u_color * texture(u_texture, v_uv);
+
 	float distance = length(u_light_position - v_world_position);
-	float attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
+	float attenuation = 1.0 / (distance * distance);
+	
+	vec3 ambient = base_color.rgb * u_ambient_light;
+	vec3 diffuse = base_color.rgb * max(dot(N, L), 0.0);
+	vec3 specular = u_light_color * pow(max(dot(R, V), 0.0), u_shininess);
 
 	vec3 final_color = ambient + (diffuse + specular) * u_light_intensity * attenuation;
-	FragColor = vec4(final_color, u_color.a);
+	FragColor = vec4(final_color, base_color.a);
 }

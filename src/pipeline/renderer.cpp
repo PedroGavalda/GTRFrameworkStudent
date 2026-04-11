@@ -243,6 +243,8 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 		shader->setUniform("u_light_intensity", light->intensity);
 	}
 
+	shader->setUniform("u_ambient_light", scene->ambient_light);
+
 	material->bind(shader);
 
 	//upload uniforms
