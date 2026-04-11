@@ -236,12 +236,26 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 		return;
 	shader->enable();
 
-	LightEntity* light = light_list.empty() ? nullptr : light_list[0];
-	if (light) {
-		shader->setUniform("u_light_position", light->root.getGlobalMatrix().getTranslation());
-		shader->setUniform("u_light_color", light->color);
-		shader->setUniform("u_light_intensity", light->intensity);
+	int num_lights = light_list.size();
+	shader->setUniform("u_num_lights", num_lights);
+
+	std::vector<vec3> positions;
+	std::vector<vec3> colors;
+	std::vector<float> intensities;
+
+	for (LightEntity* l : light_list) {
+		positions.push_back(l->root.getGlobalMatrix().getTranslation());
+		colors.push_back(l->color);
+		intensities.push_back(l->intensity);
 	}
+	
+	if (positions.empty() || colors.empty()) {
+		return;
+	}
+
+	shader->setUniform3Array("u_light_position", &positions[0].x, num_lights);
+	shader->setUniform3Array("u_light_color", &colors[0].x, num_lights);
+	shader->setUniform1Array("u_light_intensity", intensities.data(), num_lights);
 
 	shader->setUniform("u_ambient_light", scene->ambient_light);
 

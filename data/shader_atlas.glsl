@@ -251,6 +251,7 @@ void main()
 \phong.fs
 
 #version 330 core
+#define MAX_LIGHTS 8
 
 in vec3 v_world_position;
 in vec3 v_normal;
@@ -261,9 +262,11 @@ uniform sampler2D u_texture;
 
 uniform vec3 u_camera_position;
 
-uniform vec3 u_light_position;
-uniform vec3 u_light_color;
-uniform float u_light_intensity;
+uniform int u_num_lights;
+
+uniform vec3 u_light_position[MAX_LIGHTS];
+uniform vec3 u_light_color[MAX_LIGHTS];
+uniform float u_light_intensity[MAX_LIGHTS];
 
 uniform vec3 u_ambient_light;
 uniform float u_shininess;
@@ -273,20 +276,22 @@ out vec4 FragColor;
 void main() 
 {
 	vec3 N = normalize(v_normal);
-	vec3 L = normalize(u_light_position - v_world_position);
 	vec3 V = normalize(u_camera_position - v_world_position);
-	vec3 R = reflect(-L, N);
-
 	// color del material
 	vec4 base_color = u_color * texture(u_texture, v_uv);
-
-	float distance = length(u_light_position - v_world_position);
-	float attenuation = 1.0 / (distance * distance);
-	
 	vec3 ambient = base_color.rgb * u_ambient_light;
-	vec3 diffuse = base_color.rgb * max(dot(N, L), 0.0);
-	vec3 specular = u_light_color * pow(max(dot(R, V), 0.0), u_shininess);
+	vec3 diffuse = vec3(0.0);
+	vec3 specular = vec3(0.0);
+	for(int i=0;i<u_num_lights;i++){
+		vec3 L = normalize(u_light_position[i] - v_world_position);
+		vec3 R = reflect(-L, N);
+		float distance = length(u_light_position[i] - v_world_position);
+		float attenuation = 1.0 / (distance * distance);
+		diffuse += base_color.rgb * u_light_color[i] * u_light_intensity[i] * max(dot(N, L), 0.0) * attenuation;
+		specular += u_light_color[i] * u_light_intensity[i] * pow(max(dot(R, V), 0.0), u_shininess) * attenuation;
+	}	
 
-	vec3 final_color = ambient + (diffuse + specular) * u_light_intensity * attenuation;
+	// vec3 final_color = ambient + (diffuse + specular) * u_light_intensity * attenuation;
+	vec3 final_color = ambient + diffuse + specular;
 	FragColor = vec4(final_color, base_color.a);
 }

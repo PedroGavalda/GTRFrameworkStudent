@@ -89,6 +89,11 @@ CORE::Window* CORE::createWindow(const char* caption, int width, int height, boo
 	// Create an OpenGL context associated with the window.
 	glcontext = SDL_GL_CreateContext(sdl_window);
 	SDL_GL_MakeCurrent(sdl_window, glcontext);
+	std::cout << "====================" << std::endl;
+	std::cout << "GPU Vendor:   " << glGetString(GL_VENDOR) << std::endl;
+	std::cout << "GPU Renderer: " << glGetString(GL_RENDERER) << std::endl;
+	std::cout << "GL Version:   " << glGetString(GL_VERSION) << std::endl;
+	std::cout << "====================" << std::endl;
 
 	// Enable Vsync
 	SDL_GL_SetSwapInterval(1);
