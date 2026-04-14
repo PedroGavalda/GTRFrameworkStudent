@@ -279,7 +279,7 @@ void main()
 	vec3 V = normalize(u_camera_position - v_world_position);
 	// color del material
 	vec4 base_color = u_color * texture(u_texture, v_uv);
-	vec3 ambient = base_color.rgb * u_ambient_light;
+	vec3 ambient = base_color.rgb * u_ambient_light; //ka * Ia
 	vec3 diffuse = vec3(0.0);
 	vec3 specular = vec3(0.0);
 	for(int i=0;i<MAX_LIGHTS;i++){
@@ -287,13 +287,16 @@ void main()
 			vec3 L = normalize(u_light_position[i] - v_world_position);
 			vec3 R = reflect(-L, N);
 			float distance = length(u_light_position[i] - v_world_position);
-			float attenuation = 1.0 / (distance * distance);
-			diffuse += base_color.rgb * u_light_color[i] * u_light_intensity[i] * max(dot(N, L), 0.0) * attenuation;
-			specular += u_light_color[i] * u_light_intensity[i] * pow(max(dot(R, V), 0.0), u_shininess) * attenuation;
+			float attenuation = u_light_intensity[i] / (distance * distance);
+			diffuse += base_color.rgb * max(dot(N, L), 0.0) * attenuation * u_light_color[i]; //kd * (Lj * N) * Li^dir
+			specular += base_color.rgb * pow(max(dot(R, V), 0.0), u_shininess) * attenuation * u_light_color[i]; //ks * (Rj * V)^a Li^dir(Lj)
 		}
 	}	
 
 	// vec3 final_color = ambient + (diffuse + specular) * u_light_intensity * attenuation;
 	vec3 final_color = ambient + diffuse + specular;
 	FragColor = vec4(final_color, base_color.a);
+	// if (u_shininess == 32){
+	// 	FragColor = vec4(float(u_shininess),0,0,1);
+	// }
 }
