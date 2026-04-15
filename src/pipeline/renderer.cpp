@@ -69,6 +69,7 @@ void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam) {
 	// TODO: GENERATE RENDERABLES
 	// ==========================
 	render_list.clear();
+	light_list.clear();
 
 	for (int i = 0; i < scene->entities.size(); i++) {
 		BaseEntity* entity = scene->entities[i];
@@ -135,6 +136,7 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 		float db = (b->model.getTranslation() - camera->eye).length();
 		return da > db;}
 	);
+	updateLights();
 	for (auto* r : opaque) {
 		if (is_in_frustum(r, camera)) {
 			renderMeshWithMaterial(r->model, r->mesh, r->material);
@@ -212,6 +214,38 @@ void Renderer::renderSkybox(GFX::Texture* cubemap)
 	glEnable(GL_DEPTH_TEST);
 }
 
+
+std::vector<vec3> positions;
+std::vector<vec3> colors;
+std::vector<float> intensities;
+std::vector<int> types;
+std::vector<vec3> directions;
+std::vector<vec2> cones;
+
+void Renderer::updateLights() {
+	positions.clear();
+	colors.clear();
+	intensities.clear();
+	types.clear();
+	directions.clear();
+	cones.clear();
+
+	for (LightEntity* l : light_list) {
+		positions.push_back(l->root.getGlobalMatrix().getTranslation());
+		colors.push_back(l->color);
+		intensities.push_back(l->intensity);
+
+		types.push_back(l->light_type);
+
+		vec3 dir = l->root.getGlobalMatrix().frontVector();
+		directions.push_back(dir);
+		
+		float alpha_min = l->cone_info.x * DEG2RAD;
+		float alpha_max = l->cone_info.y * DEG2RAD;
+		cones.push_back(vec2(cos(alpha_min), cos(alpha_max)));
+	}
+}
+
 // Renders a mesh given its transform and material
 void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material)
 {
@@ -236,14 +270,24 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 		return;
 	shader->enable();
 
-	LightEntity* light = light_list.empty() ? nullptr : light_list[0];
-	if (light) {
-		shader->setUniform("u_light_position", light->root.getGlobalMatrix().getTranslation());
-		shader->setUniform("u_light_color", light->color);
-		shader->setUniform("u_light_intensity", light->intensity);
+	int num_lights = light_list.size();
+	shader->setUniform("u_num_lights", num_lights);
+
+	if (num_lights == 0) {
+		shader->disable();
+		return;
 	}
 
+	shader->setUniform3Array("u_light_position", &positions[0].x, num_lights);
+	shader->setUniform3Array("u_light_color", &colors[0].x, num_lights);
+	shader->setUniform1Array("u_light_intensity", intensities.data(), num_lights);
+
 	shader->setUniform("u_ambient_light", scene->ambient_light);
+
+	shader->setUniform1Array("u_light_type", types.data(), num_lights);
+	shader->setUniform3Array("u_light_direction", &directions[0].x, num_lights);
+
+	shader->setUniform2Array("cones", &cones[0].x, num_lights);
 
 	material->bind(shader);
 
