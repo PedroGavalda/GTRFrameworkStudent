@@ -270,6 +270,7 @@ uniform float u_light_intensity[MAX_LIGHTS];
 
 uniform vec3 u_ambient_light;
 uniform float u_shininess;
+uniform float u_alpha_cutoff;
 
 uniform int u_light_type[MAX_LIGHTS]; // 0: no_light | 1: point | 2: spot | 3: directional
 uniform vec3 u_light_direction[MAX_LIGHTS];
@@ -287,6 +288,10 @@ void main()
 	vec3 ambient = base_color.rgb * u_ambient_light; //ka * Ia
 	vec3 diffuse = vec3(0.0);
 	vec3 specular = vec3(0.0);
+
+	if(base_color.a < u_alpha_cutoff)
+		discard;
+
 
 	for(int i=0;i< u_num_lights;i++){
 		vec3 L;
