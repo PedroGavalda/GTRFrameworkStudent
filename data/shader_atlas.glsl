@@ -285,7 +285,7 @@ void main()
 	
 	vec3 ambient = base_color.rgb * u_ambient_light;
 	vec3 diffuse = base_color.rgb * max(dot(N, L), 0.0);
-	vec3 specular = u_light_color * pow(max(dot(R, V), 0.0), u_shininess);
+	vec3 specular = u_light_color * max(dot(R, V), 0.0), u_shininess);
 
 	vec3 final_color = ambient + (diffuse + specular) * u_light_intensity * attenuation;
 	FragColor = vec4(final_color, base_color.a);
