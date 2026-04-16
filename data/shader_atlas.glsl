@@ -249,8 +249,9 @@ void main()
 
 //mio
 \phong.fs
-
 #version 330 core
+#include "perturbNormal"
+
 #define MAX_LIGHTS 8
 
 in vec3 v_world_position;
@@ -277,11 +278,31 @@ uniform vec3 u_light_direction[MAX_LIGHTS];
 
 uniform vec2 cones[MAX_LIGHTS];
 
+uniform sampler2D u_normal_map;
+
 out vec4 FragColor;
+
+vec3 getNormalFromMap()
+{
+    vec3 tangentNormal = texture(u_normal_map, v_uv).xyz * 2.0 - 1.0;
+
+    vec3 Q1 = dFdx(v_world_position);
+    vec3 Q2 = dFdy(v_world_position);
+    vec2 st1 = dFdx(v_uv);
+    vec2 st2 = dFdy(v_uv);
+
+    vec3 N = normalize(v_normal);
+    vec3 T = normalize(Q1 * st2.y - Q2 * st1.y);
+    vec3 B = normalize(cross(N, T));
+
+    mat3 TBN = mat3(T, B, N);
+
+    return normalize(TBN * tangentNormal);
+}
 
 void main() 
 {
-	vec3 N = normalize(v_normal);
+	vec3 N = getNormalFromMap();
 	vec3 V = normalize(u_camera_position - v_world_position);
 	// color del material
 	vec4 base_color = u_color * texture(u_texture, v_uv);
