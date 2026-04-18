@@ -344,20 +344,12 @@ void main()
 			attenuation = u_light_intensity[i];
 			L = D;
 		}
-		
-		else {
-			continue;
-		}
 			
 		vec3 R = reflect(-L, N);
 		diffuse += base_color.rgb * max(dot(N, L), 0.0) * attenuation * u_light_color[i]; //kd * (Lj * N) * Li^dir
 		specular += base_color.rgb * pow(max(dot(R, V), 0.0), u_shininess) * attenuation * u_light_color[i]; //ks * (Rj * V)^a Li^dir(Lj)
 		
 	}
-	// vec3 final_color = ambient + (diffuse + specular) * u_light_intensity * attenuation;
 	vec3 final_color = ambient + diffuse + specular;
 	FragColor = vec4(final_color, base_color.a);
-	// if (u_shininess == 32){
-	// 	FragColor = vec4(float(u_shininess),0,0,1);
-	// }
 }
