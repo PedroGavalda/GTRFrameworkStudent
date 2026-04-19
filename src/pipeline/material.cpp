@@ -99,7 +99,7 @@ void Material::bind(GFX::Shader* shader) {
 		if (textures[ALBEDO].texture)
 			shader->setUniform("u_texture", textures[ALBEDO].texture, 0);
 		else
-			shader->setUniform("u_texture", GFX::Texture::getWhiteTexture(), 0);
+			shader->setUniform("u_texture", textures[ALBEDO].texture->getWhiteTexture(), 0);
 
 		// This is used to say which is the alpha threshold to what we should not paint a pixel on the screen (to cut polygons according to texture alpha)
 		shader->setUniform("u_alpha_cutoff", alpha_mode == SCN::eAlphaMode::MASK ? alpha_cutoff : 0.001f);
