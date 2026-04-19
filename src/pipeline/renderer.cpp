@@ -104,24 +104,83 @@ void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam) {
 
 void Renderer::generateShadowMap(std::vector<sRenderable*> opaque) {
 	fbo->bind();
-	glViewport(0, 0, fbo->width, fbo->height);
+	glColorMask(false, false, false, false);
+
 	glClear(GL_DEPTH_BUFFER_BIT);
-	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
 
-	light_cam->enable();
-	GFX::Shader* shadow_shader = GFX::Shader::Get("plain");
-	shadow_shader->enable();
+	// Camera Setups
+	LightEntity* light = light_list[3];
 
-	for (auto* r : opaque) {
-		if (is_in_frustum(r, light_cam)) {
-			shadow_shader->setUniform("u_model", r->model);
-			r->mesh->render(GL_TRIANGLES);
-		}
+
+
+	mat4 light_model = light->root.getGlobalMatrix();
+	vec3 light_pos = light_model.getTranslation();
+	vec3 light_dir = light_model.frontVector();
+	light_cam->lookAt(light_pos, light_dir * vec3(0.0f, 0.0f, -1.0f), vec3(0.0f, 1.0f, 0.0f));
+
+	//DIRECTIONAL LIGHT
+	float half_size = light->area / 2.0f;
+	light_cam->setOrthographic(-half_size, half_size, -half_size, half_size, light->near_distance, light->max_distance);
+
+	//SPOTLIGHT
+	//float fov = (light_ent->cone_info.y * 2.0f) * RAD2DEG;
+	//light_cam.setPerspective(fov, 1.0f, light_ent->near_distance, light_ent->max_distance);
+
+	mat4 light_vps = light_cam->viewprojection_matrix;
+
+	for (const auto& r : opaque) {
+		renderPlain(light_cam, r->model, r->mesh, r->material);
 	}
 
-	shadow_shader->disable();
+	glColorMask(true, true, true, true);
 	fbo->unbind();
-	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+}
+
+void Renderer::renderPlain(Camera* camera, const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material) {
+	//in case there is nothing to do
+	if (!mesh || !mesh->getNumVertices() || !material)
+		return;
+	assert(glGetError() == GL_NO_ERROR);
+
+	//define locals to simplify coding
+	GFX::Shader* shader = NULL;
+
+	glEnable(GL_DEPTH_TEST);
+
+	//chose a shader
+	shader = GFX::Shader::Get("plain");
+
+	assert(glGetError() == GL_NO_ERROR);
+
+	//no shader? then nothing to render
+	if (!shader)
+		return;
+	shader->enable();
+
+	//upload uniforms
+	shader->setUniform("u_model", model);
+
+	// Upload camera uniforms
+	shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
+	shader->setUniform("u_camera_position", camera->eye);
+
+	// Upload time, for cool shader effects
+	float t = getTime();
+	shader->setUniform("u_time", t);
+
+	// Render just the verticies as a wireframe
+	if (render_wireframe)
+		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+
+	//do the draw call that renders the mesh into the screen
+	mesh->render(GL_TRIANGLES);
+
+	//disable shader
+	shader->disable();
+
+	//set the render state as it was before to avoid problems with future renders
+	glDisable(GL_BLEND);
+	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 }
 
 void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
@@ -161,7 +220,12 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	);
 
 	updateLights();
-	generateShadowMap(opaque);
+
+	for (auto* r : opaque) {
+		if (is_in_frustum(r, camera)) {
+			generateShadowMap(opaque);
+		}
+	}
 	player_cam->enable();
 
 	//render skybox

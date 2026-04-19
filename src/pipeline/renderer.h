@@ -80,6 +80,8 @@ namespace SCN {
 		void updateLights();
 
 		void generateShadowMap(std::vector<sRenderable*> opaque);
+
+		void renderPlain(Camera* camera, const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material);
 	};
 
 };
