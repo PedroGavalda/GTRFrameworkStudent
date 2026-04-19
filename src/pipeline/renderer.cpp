@@ -371,6 +371,8 @@ void Renderer::showUI()
 
 	//add here your stuff
 	//...
+	ImGui::SliderFloat("Shininess", &global_shininess, 1.0f, 100.0f);
+
 }
 
 #else
