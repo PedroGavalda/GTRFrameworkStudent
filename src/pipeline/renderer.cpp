@@ -188,19 +188,20 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 bool Renderer::is_in_frustum(sRenderable* r, Camera* camera) {
 	if (!r || !camera)
 		return false;
-	vec3 aabb_min_world = r->model*r->mesh->aabb_min;
-	vec3 aabb_max_world = r->model * r->mesh->aabb_max;
+	vec3 aabb_min = r->mesh->aabb_min;
+	vec3 aabb_max = r->mesh->aabb_max;
 	vec3 aabb_coordinates[8];
 	int counter_outs = 0;
 	for (int i = 0;i < 8;i++) {
-		aabb_coordinates[i] = aabb_min_world;
-		if (i>=4) aabb_coordinates[i].x = aabb_max_world.x;
-		if (i % 4 == 2 || i % 4 == 3) aabb_coordinates[i].y = aabb_max_world.y;
-		if (i % 2 == 1) aabb_coordinates[i].z = aabb_max_world.z;
+		aabb_coordinates[i] = aabb_min;
+		if (i>=4) aabb_coordinates[i].x = aabb_max.x;
+		if (i % 4 == 2 || i % 4 == 3) aabb_coordinates[i].y = aabb_max.y;
+		if (i % 2 == 1) aabb_coordinates[i].z = aabb_max.z;
+		aabb_coordinates[i] = r->model * aabb_coordinates[i];
 	}
 	for (int i = 0;i < 6;i++) {
 		for (int j = 0;j < 8;j++) {
-			if (camera->frustum[i][0] * aabb_coordinates[j].x + camera->frustum[i][1] * aabb_coordinates[j].y + camera->frustum[i][2] * aabb_coordinates[j].z + camera->frustum[i][3] > 0) {
+			if (camera->frustum[i][0] * aabb_coordinates[j].x + camera->frustum[i][1] * aabb_coordinates[j].y + camera->frustum[i][2] * aabb_coordinates[j].z + camera->frustum[i][3] >= 0) {
 				break;
 			}
 			if (j == 7) return false;
