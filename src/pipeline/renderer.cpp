@@ -27,6 +27,7 @@ Renderer::Renderer(const char* shader_atlas_filename)
 	scene = nullptr;
 	skybox_cubemap = nullptr;
 
+
 	if (!GFX::Shader::LoadAtlas(shader_atlas_filename))
 		exit(1);
 	GFX::checkGLErrors();
@@ -35,7 +36,9 @@ Renderer::Renderer(const char* shader_atlas_filename)
 	sphere.uploadToVRAM();
 
 	fbo = new GFX::FBO();
-	fbo->create(2560, 1440, 1, GL_RGB);
+	fbo->setDepthOnly(2560,1440);
+	
+	light_cam = new Camera();
 }
 
 void Renderer::setupScene()
@@ -106,8 +109,6 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 
 	parseSceneEntities(scene, camera);
 
-	fbo->bind();
-
 	//set the clear color (the background color)
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
 
@@ -152,9 +153,6 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 			renderMeshWithMaterial(r->model, r->mesh, r->material);
 		}
 	}
-	fbo->unbind();
-	fbo->color_textures[0]->toViewport();
-
 }
 
 bool Renderer::is_in_frustum(sRenderable* r, Camera* camera) {
@@ -236,7 +234,7 @@ void Renderer::updateLights() {
 	types.clear();
 	directions.clear();
 	cones.clear();
-
+	
 	for (LightEntity* l : light_list) {
 		positions.push_back(l->root.getGlobalMatrix().getTranslation());
 		colors.push_back(l->color);
@@ -251,6 +249,13 @@ void Renderer::updateLights() {
 		float alpha_max = l->cone_info.y * DEG2RAD;
 		cones.push_back(vec2(cos(alpha_min), cos(alpha_max)));
 	}
+	LightEntity* light = light_list[3];
+	mat4 light_model = light->root.getGlobalMatrix();
+	vec3 light_pos = light_model.getTranslation();
+	light_cam->lookAt(light_pos, light_model * vec3(0.0f, 0.0f, -1.0f), vec3(0.0f, 1.0f, 0.0f));
+	float fov = light->cone_info.y * 2.0f;
+	float aspect = 1.0f;
+	light_cam->setPerspective(fov, 1.0f, 0.1f, 100.0f);
 }
 
 // Renders a mesh given its transform and material

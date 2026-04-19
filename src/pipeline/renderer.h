@@ -45,6 +45,7 @@ namespace SCN {
 	{
 	public:
 		GFX::FBO* fbo;
+		Camera* light_cam;
 		bool render_wireframe;
 		bool render_boundaries;
 
