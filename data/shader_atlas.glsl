@@ -282,27 +282,29 @@ uniform sampler2D u_normal_map;
 
 out vec4 FragColor;
 
-vec3 getNormalFromMap()
-{
-    vec3 tangentNormal = texture(u_normal_map, v_uv).xyz * 2.0 - 1.0;
+// mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv)
+// {
+// 	// get edge vectors of the pixel triangle
+// 	vec3 dp1 = dFdx(p);
+// 	vec3 dp2 = dFdy(p);
+// 	vec2 duv1 = dFdx(uv);
+// 	vec2 duv2 = dFdy(uv);
 
-    vec3 Q1 = dFdx(v_world_position);
-    vec3 Q2 = dFdy(v_world_position);
-    vec2 st1 = dFdx(v_uv);
-    vec2 st2 = dFdy(v_uv);
+// 	// solve the linear system
+// 	vec3 dp2perp = cross(dp2, N);
+// 	vec3 dp1perp = cross(N, dp1);
+// 	vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
+// 	vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
 
-    vec3 N = normalize(v_normal);
-    vec3 T = normalize(Q1 * st2.y - Q2 * st1.y);
-    vec3 B = normalize(cross(N, T));
-
-    mat3 TBN = mat3(T, B, N);
-
-    return normalize(TBN * tangentNormal);
-}
+// 	// construct a scale-invariant frame 
+// 	float invmax = inversesqrt(max(dot(T, T), dot(B, B)));
+// 	return mat3(T * invmax, B * invmax, N);
+// }
 
 void main() 
 {
-	vec3 N = getNormalFromMap();
+	vec3 map_normal = texture(u_normal_map, v_uv).xyz * 2.0 - 1.0;
+	vec3 N = perturbNormal(normalize(v_normal), v_world_position, v_uv, map_normal);
 	vec3 V = normalize(u_camera_position - v_world_position);
 	// color del material
 	vec4 base_color = u_color * texture(u_texture, v_uv);

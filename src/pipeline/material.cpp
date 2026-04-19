@@ -109,7 +109,7 @@ void Material::bind(GFX::Shader* shader) {
 		if (textures[NORMALMAP].texture)
 			shader->setUniform("u_normal_map", textures[NORMALMAP].texture, 1);
 		else
-			shader->setUniform("u_normal_map", textures[NORMALMAP].texture->getWhiteTexture(), 1);
+			shader->setUniform("u_normal_map", GFX::Texture::getWhiteTexture(), 1);
 
 	}
 }

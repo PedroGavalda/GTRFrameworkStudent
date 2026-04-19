@@ -33,6 +33,9 @@ Renderer::Renderer(const char* shader_atlas_filename)
 
 	sphere.createSphere(1.0f);
 	sphere.uploadToVRAM();
+
+	fbo = new GFX::FBO();
+	fbo->create(2560, 1440, 1, GL_RGB);
 }
 
 void Renderer::setupScene()
@@ -103,6 +106,8 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 
 	parseSceneEntities(scene, camera);
 
+	fbo->bind();
+
 	//set the clear color (the background color)
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
 
@@ -113,7 +118,7 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	//render skybox
 	if (skybox_cubemap)
 		renderSkybox(skybox_cubemap);
-
+	
 	// HERE =====================
 	// TODO: RENDER RENDERABLES
 	// ==========================
@@ -147,6 +152,8 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 			renderMeshWithMaterial(r->model, r->mesh, r->material);
 		}
 	}
+	fbo->unbind();
+	fbo->color_textures[0]->toViewport();
 
 }
 

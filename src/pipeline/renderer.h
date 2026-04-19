@@ -44,6 +44,7 @@ namespace SCN {
 	class Renderer
 	{
 	public:
+		GFX::FBO* fbo;
 		bool render_wireframe;
 		bool render_boundaries;
 
