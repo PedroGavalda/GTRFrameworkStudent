@@ -36,7 +36,7 @@ Renderer::Renderer(const char* shader_atlas_filename)
 	sphere.uploadToVRAM();
 
 	fbo = new GFX::FBO();
-	fbo->setDepthOnly(2560,1440);
+	fbo->setDepthOnly(1024,1024);
 	
 	light_cam = new Camera();
 }
@@ -102,8 +102,31 @@ void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam) {
 
 }
 
+void Renderer::generateShadowMap(std::vector<sRenderable*> opaque) {
+	fbo->bind();
+	glViewport(0, 0, fbo->width, fbo->height);
+	glClear(GL_DEPTH_BUFFER_BIT);
+	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+
+	light_cam->enable();
+	GFX::Shader* shadow_shader = GFX::Shader::Get("plain");
+	shadow_shader->enable();
+
+	for (auto* r : opaque) {
+		if (is_in_frustum(r, light_cam)) {
+			shadow_shader->setUniform("u_model", r->model);
+			r->mesh->render(GL_TRIANGLES);
+		}
+	}
+
+	shadow_shader->disable();
+	fbo->unbind();
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+}
+
 void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 {
+
 	this->scene = scene;
 	setupScene();
 
@@ -115,24 +138,18 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	// Clear the color and the depth buffer
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	GFX::checkGLErrors();
+	Camera* player_cam = camera;
 
-	//render skybox
-	if (skybox_cubemap)
-		renderSkybox(skybox_cubemap);
-	
-	// HERE =====================
-	// TODO: RENDER RENDERABLES
-	// ==========================
 	std::vector<sRenderable*> opaque;
 	std::vector<sRenderable*> transparent;
-	for (auto& r : render_list){
+	for (auto& r : render_list) {
 		if (!r.material) continue;
 		if (r.material->alpha_mode == BLEND)
 			transparent.push_back(&r);
 		else
 			opaque.push_back(&r);
 	}
-	std::sort(opaque.begin(), opaque.end(), [&](sRenderable* a, sRenderable* b){
+	std::sort(opaque.begin(), opaque.end(), [&](sRenderable* a, sRenderable* b) {
 		float da = (a->model.getTranslation() - camera->eye).length();
 		float db = (b->model.getTranslation() - camera->eye).length();
 		return da < db;}
@@ -142,7 +159,19 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 		float db = (b->model.getTranslation() - camera->eye).length();
 		return da > db;}
 	);
+
 	updateLights();
+	generateShadowMap(opaque);
+	player_cam->enable();
+
+	//render skybox
+	if (skybox_cubemap)
+		renderSkybox(skybox_cubemap);
+	
+	 //HERE =====================
+	 //TODO: RENDER RENDERABLES
+	 //==========================
+	
 	for (auto* r : opaque) {
 		if (is_in_frustum(r, camera)) {
 			renderMeshWithMaterial(r->model, r->mesh, r->material);
@@ -153,6 +182,7 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 			renderMeshWithMaterial(r->model, r->mesh, r->material);
 		}
 	}
+
 }
 
 bool Renderer::is_in_frustum(sRenderable* r, Camera* camera) {
@@ -249,7 +279,7 @@ void Renderer::updateLights() {
 		float alpha_max = l->cone_info.y * DEG2RAD;
 		cones.push_back(vec2(cos(alpha_min), cos(alpha_max)));
 	}
-	LightEntity* light = light_list[3];
+	LightEntity* light = light_list.at(3);
 	mat4 light_model = light->root.getGlobalMatrix();
 	vec3 light_pos = light_model.getTranslation();
 	light_cam->lookAt(light_pos, light_model * vec3(0.0f, 0.0f, -1.0f), vec3(0.0f, 1.0f, 0.0f));
@@ -313,6 +343,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	// Upload time, for cool shader effects
 	float t = getTime();
 	shader->setUniform("u_time", t);
+	shader->setUniform("u_tex", fbo->depth_texture, 2);
 
 	// Render just the verticies as a wireframe
 	if (render_wireframe)

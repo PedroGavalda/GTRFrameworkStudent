@@ -78,6 +78,8 @@ namespace SCN {
 		bool is_in_frustum(sRenderable* r, Camera* camera);
 
 		void updateLights();
+
+		void generateShadowMap(std::vector<sRenderable*> opaque);
 	};
 
 };
