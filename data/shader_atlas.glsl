@@ -280,7 +280,8 @@ uniform vec3 u_light_direction[MAX_LIGHTS];
 uniform vec2 cones[MAX_LIGHTS];
 
 uniform sampler2D u_normal_map;
-uniform sampler2D u_tex;
+uniform sampler2D u_shadow_map;
+uniform mat4 u_light_viewprojection;
 
 out vec4 FragColor;
 
@@ -289,6 +290,7 @@ void main()
 	vec3 map_normal = texture(u_normal_map, v_uv).xyz * 2.0 - 1.0;
 	vec3 N = perturbNormal(normalize(v_normal), v_world_position, v_uv, map_normal);
 	vec3 V = normalize(u_camera_position - v_world_position);
+	
 	// color del material
 	vec4 base_color = u_color * texture(u_texture, v_uv);
 	vec3 ambient = base_color.rgb * u_ambient_light; //ka * Ia
@@ -298,6 +300,16 @@ void main()
 	if(base_color.a < u_alpha_cutoff)
 		discard;
 
+	vec4 light_space_pos = u_light_viewprojection * vec4(v_world_position, 1.0);
+	float shadow_bias = 0.005;
+
+	float real_depth = (light_space_pos.z - shadow_bias) / light_space_pos.w;
+	real_depth = real_depth * 0.5 + 0.5;
+	vec3 proj_coords = light_space_pos.xyz / light_space_pos.w;
+	proj_coords = proj_coords * 0.5 + 0.5;
+
+	float closest_depth = texture(u_shadow_map, proj_coords.xy).r;
+	float shadow = real_depth > closest_depth ? 1.0 : 0.0;
 
 	for(int i=0;i< u_num_lights;i++){
 		vec3 L;
@@ -331,9 +343,9 @@ void main()
 		}
 			
 		vec3 R = reflect(-L, N);
-		diffuse += base_color.rgb * max(dot(N, L), 0.0) * attenuation * u_light_color[i]; //kd * (Lj * N) * Li^dir
-		specular += base_color.rgb * pow(max(dot(R, V), 0.0), u_shininess) * attenuation * u_light_color[i]; //ks * (Rj * V)^a Li^dir(Lj)
-		
+		float light_factor = 1.0 - shadow;
+		diffuse += base_color.rgb * max(dot(N, L), 0.0) * attenuation * u_light_color[i] * light_factor; //kd * (Lj * N) * Li^dir
+		specular += base_color.rgb * pow(max(dot(R, V), 0.0), u_shininess) * attenuation * u_light_color[i] * light_factor; //ks * (Rj * V)^a Li^dir(Lj)
 	}
 	vec3 final_color = ambient + diffuse + specular;
 	FragColor = vec4(final_color, base_color.a);
