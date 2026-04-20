@@ -45,6 +45,7 @@ namespace SCN {
 	{
 	public:
 		GFX::FBO* fbo;
+		Camera* light_cam;
 		bool render_wireframe;
 		bool render_boundaries;
 
@@ -77,6 +78,10 @@ namespace SCN {
 		bool is_in_frustum(sRenderable* r, Camera* camera);
 
 		void updateLights();
+
+		void generateShadowMap(std::vector<sRenderable*> opaque);
+
+		void renderPlain(Camera* camera, const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material);
 	};
 
 };

@@ -5,6 +5,8 @@
 #include <map>
 #include <string>
 
+extern float global_shininess;
+
 //forward declaration
 namespace GFX
 {
