@@ -357,7 +357,13 @@ void main()
 
 out vec4 FragColor;
 
+in vec2 v_uv;
+uniform sampler2D u_texture;
+uniform float u_alpha_cutoff;
+
 void main()
 {
+	if(texture(u_texture, v_uv).a < u_alpha_cutoff)
+		discard;
 	FragColor = vec4(0.0, 0.0, 0.0, 1.0);
 }

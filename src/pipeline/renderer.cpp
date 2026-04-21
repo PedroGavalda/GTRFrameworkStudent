@@ -170,6 +170,7 @@ void Renderer::renderPlain(Camera* camera, const Matrix44 model, GFX::Mesh* mesh
 	if (render_wireframe)
 		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
+	material->bind(shader);
 	//do the draw call that renders the mesh into the screen
 	mesh->render(GL_TRIANGLES);
 
