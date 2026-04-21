@@ -111,8 +111,6 @@ void Renderer::generateShadowMap(std::vector<sRenderable*> opaque) {
 	// Camera Setups
 	LightEntity* light = light_list[3];
 
-
-
 	mat4 light_model = light->root.getGlobalMatrix();
 	vec3 light_pos = light_model.getTranslation();
 	vec3 light_dir = light_model.frontVector();
@@ -396,6 +394,8 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 
 	shader->setUniform2Array("cones", &cones[0].x, num_lights);
 
+	shader->setUniform("u_light_viewprojection", light_cam->viewprojection_matrix);
+
 	material->bind(shader);
 
 	//upload uniforms
@@ -408,7 +408,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	// Upload time, for cool shader effects
 	float t = getTime();
 	shader->setUniform("u_time", t);
-	shader->setUniform("u_tex", fbo->depth_texture, 2);
+	shader->setUniform("u_shadow_map", fbo->depth_texture, 2);
 
 	// Render just the verticies as a wireframe
 	if (render_wireframe)
@@ -436,7 +436,6 @@ void Renderer::showUI()
 	//add here your stuff
 	//...
 	ImGui::SliderFloat("Shininess", &global_shininess, 1.0f, 100.0f);
-
 }
 
 #else
