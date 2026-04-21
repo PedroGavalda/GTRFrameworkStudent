@@ -4,6 +4,7 @@ texture basic.vs texture.fs
 skybox basic.vs skybox.fs
 depth quad.vs depth.fs
 multi basic.vs multi.fs
+plain basic.vs plain.fs
 //mio
 phong basic.vs phong.fs
 
@@ -46,7 +47,7 @@ in vec3 a_normal;
 in vec2 a_coord;
 in vec4 a_color;
 
-uniform vec3 u_camera_pos;
+uniform vec3 u_camera_position;
 
 uniform mat4 u_model;
 uniform mat4 u_viewprojection;
@@ -249,8 +250,9 @@ void main()
 
 //mio
 \phong.fs
-
 #version 330 core
+#include "perturbNormal"
+
 #define MAX_LIGHTS 8
 
 in vec3 v_world_position;
@@ -270,30 +272,98 @@ uniform float u_light_intensity[MAX_LIGHTS];
 
 uniform vec3 u_ambient_light;
 uniform float u_shininess;
+uniform float u_alpha_cutoff;
+
+uniform int u_light_type[MAX_LIGHTS]; // 0: no_light | 1: point | 2: spot | 3: directional
+uniform vec3 u_light_direction[MAX_LIGHTS];
+
+uniform vec2 cones[MAX_LIGHTS];
+
+uniform sampler2D u_normal_map;
+uniform sampler2D u_shadow_map;
+uniform mat4 u_light_viewprojection;
 
 out vec4 FragColor;
 
 void main() 
 {
-	vec3 N = normalize(v_normal);
+	vec3 map_normal = texture(u_normal_map, v_uv).xyz * 2.0 - 1.0;
+	vec3 N = perturbNormal(normalize(v_normal), v_world_position, v_uv, map_normal);
 	vec3 V = normalize(u_camera_position - v_world_position);
+	
 	// color del material
 	vec4 base_color = u_color * texture(u_texture, v_uv);
-	vec3 ambient = base_color.rgb * u_ambient_light;
+	vec3 ambient = base_color.rgb * u_ambient_light; //ka * Ia
 	vec3 diffuse = vec3(0.0);
 	vec3 specular = vec3(0.0);
-	for(int i=0;i<MAX_LIGHTS;i++){
-		if (i<u_num_lights){
-			vec3 L = normalize(u_light_position[i] - v_world_position);
-			vec3 R = reflect(-L, N);
-			float distance = length(u_light_position[i] - v_world_position);
-			float attenuation = 1.0 / (distance * distance);
-			diffuse += base_color.rgb * u_light_color[i] * u_light_intensity[i] * max(dot(N, L), 0.0) * attenuation;
-			specular += u_light_color[i] * u_light_intensity[i] * pow(max(dot(R, V), 0.0), u_shininess) * attenuation;
-		}
-	}	
 
-	// vec3 final_color = ambient + (diffuse + specular) * u_light_intensity * attenuation;
+	if(base_color.a < u_alpha_cutoff)
+		discard;
+
+	vec4 light_space_pos = u_light_viewprojection * vec4(v_world_position, 1.0);
+	float shadow_bias = 0.005;
+
+	float real_depth = (light_space_pos.z - shadow_bias) / light_space_pos.w;
+	real_depth = real_depth * 0.5 + 0.5;
+	vec3 proj_coords = light_space_pos.xyz / light_space_pos.w;
+	proj_coords = proj_coords * 0.5 + 0.5;
+
+	float closest_depth = texture(u_shadow_map, proj_coords.xy).r;
+	float shadow = real_depth > closest_depth ? 1.0 : 0.0;
+
+	for(int i=0;i< u_num_lights;i++){
+		vec3 L;
+		float attenuation;
+		vec3 D = normalize(u_light_direction[i]);
+
+		// POINT LIGHT
+		if (u_light_type[i] == 1) { 
+			float distance = length(u_light_position[i] - v_world_position);
+			attenuation = u_light_intensity[i] / (distance * distance);
+			L = normalize(u_light_position[i] - v_world_position);
+		}
+
+		// SPOTLIGHT LIGHT
+		else if (u_light_type[i] == 2) {
+			float distance = length(u_light_position[i] - v_world_position);
+			attenuation = u_light_intensity[i] / (distance * distance);
+			L = normalize(u_light_position[i] - v_world_position);
+			
+			if (dot(L, D) >= cones[i].y) {
+				attenuation *= (dot(L,D) - cones[i].y) / (cones[i].x - cones[i].y);
+			} else {
+				attenuation *= 0.0;
+			}
+		}
+
+		// DIRECTIONAL LIGHT
+		else if (u_light_type[i] == 3) { // DIRECTIONAL
+			attenuation = u_light_intensity[i];
+			L = D;
+		}
+			
+		vec3 R = reflect(-L, N);
+		float light_factor = 1.0 - shadow;
+		diffuse += base_color.rgb * max(dot(N, L), 0.0) * attenuation * u_light_color[i] * light_factor; //kd * (Lj * N) * Li^dir
+		specular += base_color.rgb * pow(max(dot(R, V), 0.0), u_shininess) * attenuation * u_light_color[i] * light_factor; //ks * (Rj * V)^a Li^dir(Lj)
+	}
 	vec3 final_color = ambient + diffuse + specular;
 	FragColor = vec4(final_color, base_color.a);
+}
+
+\plain.fs
+
+#version 330 core
+
+out vec4 FragColor;
+
+in vec2 v_uv;
+uniform sampler2D u_texture;
+uniform float u_alpha_cutoff;
+
+void main()
+{
+	if(texture(u_texture, v_uv).a < u_alpha_cutoff)
+		discard;
+	FragColor = vec4(0.0, 0.0, 0.0, 1.0);
 }

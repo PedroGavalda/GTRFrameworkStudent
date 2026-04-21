@@ -5,7 +5,9 @@
 #include "../gfx/texture.h"
 #include "../gfx/shader.h"
 
+
 using namespace SCN;
+float global_shininess = 32.0f;
 
 std::map<std::string, Material*> Material::sMaterials;
 uint32 Material::s_last_index = 0;
@@ -96,13 +98,21 @@ void Material::bind(GFX::Shader* shader) {
 
 		shader->setUniform("u_color", color);
 
-		if (texture)
-			shader->setUniform("u_texture", texture, 0);
+		if (textures[ALBEDO].texture)
+			shader->setUniform("u_texture", textures[ALBEDO].texture, 0);
+		else
+			shader->setUniform("u_texture", textures[ALBEDO].texture->getWhiteTexture(), 0);
 
 		// This is used to say which is the alpha threshold to what we should not paint a pixel on the screen (to cut polygons according to texture alpha)
 		shader->setUniform("u_alpha_cutoff", alpha_mode == SCN::eAlphaMode::MASK ? alpha_cutoff : 0.001f);
 
 		//mio
-		shader->setUniform("u_shininess", 32.0f);
+		shader->setUniform("u_shininess", global_shininess);
+
+		if (textures[NORMALMAP].texture)
+			shader->setUniform("u_normal_map", textures[NORMALMAP].texture, 1);
+		else
+			shader->setUniform("u_normal_map", GFX::Texture::getWhiteTexture(), 1);
+
 	}
 }
