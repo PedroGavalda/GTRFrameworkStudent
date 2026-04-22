@@ -114,7 +114,7 @@ void Renderer::generateShadowMap(std::vector<sRenderable*> opaque) {
 
 		mat4 light_model = light->root.getGlobalMatrix();
 		vec3 light_pos = light_model.getTranslation();
-		vec3 light_dir = light_model.frontVector();
+		vec3 light_dir = normalize(light_model.frontVector());
 		light_cameras[i]->lookAt(light_pos, light_dir * vec3(0.0f, 0.0f, -1.0f), vec3(0.0f, 1.0f, 0.0f));
 
 		//DIRECTIONAL LIGHT
@@ -126,8 +126,8 @@ void Renderer::generateShadowMap(std::vector<sRenderable*> opaque) {
 		//SPOTLIGHT
 		else if (light->light_type == SPOT) {
 			//codigo del sushant que se tiene que cambiar
-			//float fov = (light->cone_info.y * 2.0f) * RAD2DEG;
-			//light_cameras[i]->setPerspective(fov, 1.0f, light->near_distance, light->max_distance);
+			float fov = (light->cone_info.y * 2.0f);
+			light_cameras[i]->setPerspective(fov, 1.0f, light->near_distance, light->max_distance);
 		}
 		else {
 			goto point;
