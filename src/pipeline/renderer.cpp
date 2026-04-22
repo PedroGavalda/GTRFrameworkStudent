@@ -104,6 +104,10 @@ void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam) {
 
 void Renderer::generateShadowMap(std::vector<sRenderable*> opaque) {
 	fbo->bind();
+
+	glEnable(GL_CULL_FACE);
+	glCullFace(GL_FRONT);
+
 	glColorMask(false, false, false, false);
 
 	glClear(GL_DEPTH_BUFFER_BIT);
@@ -131,6 +135,10 @@ void Renderer::generateShadowMap(std::vector<sRenderable*> opaque) {
 	}
 
 	glColorMask(true, true, true, true);
+
+	glCullFace(GL_BACK);
+	glDisable(GL_CULL_FACE);
+
 	fbo->unbind();
 }
 
