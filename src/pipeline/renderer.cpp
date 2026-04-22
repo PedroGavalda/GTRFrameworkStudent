@@ -118,19 +118,28 @@ void Renderer::generateShadowMap(std::vector<sRenderable*> opaque) {
 		light_cameras[i]->lookAt(light_pos, light_dir * vec3(0.0f, 0.0f, -1.0f), vec3(0.0f, 1.0f, 0.0f));
 
 		//DIRECTIONAL LIGHT
-		float half_size = light->area / 2.0f;
-		light_cameras[i]->setOrthographic(-half_size, half_size, -half_size, half_size, light->near_distance, light->max_distance);
+		if (light->light_type == DIRECTIONAL) {
+			float half_size = light->area / 2.0f;
+			light_cameras[i]->setOrthographic(-half_size, half_size, -half_size, half_size, light->near_distance, light->max_distance);
+		}
 
 		//SPOTLIGHT
-		//float fov = (light_ent->cone_info.y * 2.0f) * RAD2DEG;
-		//light_cam.setPerspective(fov, 1.0f, light_ent->near_distance, light_ent->max_distance);
+		else if (light->light_type == SPOT) {
+			//codigo del sushant que se tiene que cambiar
+			//float fov = (light->cone_info.y * 2.0f) * RAD2DEG;
+			//light_cameras[i]->setPerspective(fov, 1.0f, light->near_distance, light->max_distance);
+		}
+		else {
+			goto point;
+		}
 
-		mat4 light_vps = light_cameras[i]->viewprojection_matrix;
+		//mat4 light_vps = light_cameras[i]->viewprojection_matrix;
 
 		for (const auto& r : opaque) {
 			renderPlain(light_cameras[i].get(), r->model, r->mesh, r->material);
 		}
 
+		point:
 		glColorMask(true, true, true, true);
 
 		glCullFace(GL_BACK);
