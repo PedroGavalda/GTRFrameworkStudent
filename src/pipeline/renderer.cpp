@@ -34,11 +34,6 @@ Renderer::Renderer(const char* shader_atlas_filename)
 
 	sphere.createSphere(1.0f);
 	sphere.uploadToVRAM();
-
-	fbo = new GFX::FBO();
-	fbo->setDepthOnly(1024,1024);
-	
-	light_cam = new Camera();
 }
 
 void Renderer::setupScene()
@@ -103,43 +98,46 @@ void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam) {
 }
 
 void Renderer::generateShadowMap(std::vector<sRenderable*> opaque) {
-	fbo->bind();
+	for(int i = 0; i<light_list.size(); i++){
 
-	glEnable(GL_CULL_FACE);
-	glCullFace(GL_FRONT);
+		shadow_fbos[i]->bind();
 
-	glColorMask(false, false, false, false);
+		glEnable(GL_CULL_FACE);
+		glCullFace(GL_FRONT);
 
-	glClear(GL_DEPTH_BUFFER_BIT);
+		glColorMask(false, false, false, false);
 
-	// Camera Setups
-	LightEntity* light = light_list[3];
+		glClear(GL_DEPTH_BUFFER_BIT);
 
-	mat4 light_model = light->root.getGlobalMatrix();
-	vec3 light_pos = light_model.getTranslation();
-	vec3 light_dir = light_model.frontVector();
-	light_cam->lookAt(light_pos, light_dir * vec3(0.0f, 0.0f, -1.0f), vec3(0.0f, 1.0f, 0.0f));
+		// Camera Setups
+		LightEntity* light = light_list[i];
 
-	//DIRECTIONAL LIGHT
-	float half_size = light->area / 2.0f;
-	light_cam->setOrthographic(-half_size, half_size, -half_size, half_size, light->near_distance, light->max_distance);
+		mat4 light_model = light->root.getGlobalMatrix();
+		vec3 light_pos = light_model.getTranslation();
+		vec3 light_dir = light_model.frontVector();
+		light_cameras[i]->lookAt(light_pos, light_dir * vec3(0.0f, 0.0f, -1.0f), vec3(0.0f, 1.0f, 0.0f));
 
-	//SPOTLIGHT
-	//float fov = (light_ent->cone_info.y * 2.0f) * RAD2DEG;
-	//light_cam.setPerspective(fov, 1.0f, light_ent->near_distance, light_ent->max_distance);
+		//DIRECTIONAL LIGHT
+		float half_size = light->area / 2.0f;
+		light_cameras[i]->setOrthographic(-half_size, half_size, -half_size, half_size, light->near_distance, light->max_distance);
 
-	mat4 light_vps = light_cam->viewprojection_matrix;
+		//SPOTLIGHT
+		//float fov = (light_ent->cone_info.y * 2.0f) * RAD2DEG;
+		//light_cam.setPerspective(fov, 1.0f, light_ent->near_distance, light_ent->max_distance);
 
-	for (const auto& r : opaque) {
-		renderPlain(light_cam, r->model, r->mesh, r->material);
+		mat4 light_vps = light_cameras[i]->viewprojection_matrix;
+
+		for (const auto& r : opaque) {
+			renderPlain(light_cameras[i].get(), r->model, r->mesh, r->material);
+		}
+
+		glColorMask(true, true, true, true);
+
+		glCullFace(GL_BACK);
+		glDisable(GL_CULL_FACE);
+
+		shadow_fbos[i]->unbind();
 	}
-
-	glColorMask(true, true, true, true);
-
-	glCullFace(GL_BACK);
-	glDisable(GL_CULL_FACE);
-
-	fbo->unbind();
 }
 
 void Renderer::renderPlain(Camera* camera, const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material) {
@@ -197,6 +195,14 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	setupScene();
 
 	parseSceneEntities(scene, camera);
+	if (num_lights < light_list.size()) {
+		for (int i = num_lights; i < light_list.size(); i++) {
+			shadow_fbos.push_back(std::make_unique<GFX::FBO>());
+			light_cameras.push_back(std::make_unique<Camera>());
+			shadow_fbos[i]->setDepthOnly(1024, 1024);
+			num_lights++;
+		}
+	}
 
 	//set the clear color (the background color)
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
@@ -228,11 +234,8 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 
 	updateLights();
 
-	for (auto* r : opaque) {
-		if (is_in_frustum(r, camera)) {
-			generateShadowMap(opaque);
-		}
-	}
+
+	generateShadowMap(opaque);
 	player_cam->enable();
 
 	//render skybox
@@ -351,13 +354,16 @@ void Renderer::updateLights() {
 		float alpha_max = l->cone_info.y * DEG2RAD;
 		cones.push_back(vec2(cos(alpha_min), cos(alpha_max)));
 	}
-	LightEntity* light = light_list.at(3);
-	mat4 light_model = light->root.getGlobalMatrix();
-	vec3 light_pos = light_model.getTranslation();
-	light_cam->lookAt(light_pos, light_model * vec3(0.0f, 0.0f, -1.0f), vec3(0.0f, 1.0f, 0.0f));
-	float fov = light->cone_info.y * 2.0f;
-	float aspect = 1.0f;
-	light_cam->setPerspective(fov, 1.0f, 0.1f, 100.0f);
+	for (int i=0; i < light_list.size(); i++) {
+		LightEntity* light = light_list.at(3);
+		mat4 light_model = light->root.getGlobalMatrix();
+		vec3 light_pos = light_model.getTranslation();
+		light_cameras[i]->lookAt(light_pos, light_model * vec3(0.0f, 0.0f, -1.0f), vec3(0.0f, 1.0f, 0.0f));
+		float fov = light->cone_info.y * 2.0f;
+		float aspect = 1.0f;
+		light_cameras[i]->setPerspective(fov, 1.0f, 0.1f, 100.0f);
+	}
+
 }
 
 // Renders a mesh given its transform and material
@@ -403,7 +409,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 
 	shader->setUniform2Array("cones", &cones[0].x, num_lights);
 
-	shader->setUniform("u_light_viewprojection", light_cam->viewprojection_matrix);
+	shader->setUniform("u_light_viewprojection", light_cameras[3]->viewprojection_matrix);
 
 	material->bind(shader);
 
@@ -417,7 +423,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	// Upload time, for cool shader effects
 	float t = getTime();
 	shader->setUniform("u_time", t);
-	shader->setUniform("u_shadow_map", fbo->depth_texture, 2);
+	shader->setUniform("u_shadow_map", shadow_fbos[3]->depth_texture, 2);
 
 	// Render just the verticies as a wireframe
 	if (render_wireframe)

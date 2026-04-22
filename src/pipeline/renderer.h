@@ -44,8 +44,9 @@ namespace SCN {
 	class Renderer
 	{
 	public:
-		GFX::FBO* fbo;
-		Camera* light_cam;
+		std::vector<std::unique_ptr<GFX::FBO>> shadow_fbos;
+		std::vector<std::unique_ptr<Camera>> light_cameras;
+		int num_lights = 0;
 		bool render_wireframe;
 		bool render_boundaries;
 
