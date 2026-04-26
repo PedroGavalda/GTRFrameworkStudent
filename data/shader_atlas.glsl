@@ -273,6 +273,7 @@ uniform float u_light_intensity[MAX_LIGHTS];
 uniform vec3 u_ambient_light;
 uniform float u_shininess;
 uniform float u_alpha_cutoff;
+uniform float u_shadow_bias;
 
 uniform int u_light_type[MAX_LIGHTS]; // 0: no_light | 1: point | 2: spot | 3: directional
 uniform vec3 u_light_direction[MAX_LIGHTS];
@@ -280,8 +281,11 @@ uniform vec3 u_light_direction[MAX_LIGHTS];
 uniform vec2 cones[MAX_LIGHTS];
 
 uniform sampler2D u_normal_map;
-uniform sampler2D u_shadow_map[MAX_LIGHTS];
-uniform mat4 u_light_viewprojection[MAX_LIGHTS];
+
+uniform sampler2D u_spot_shadow_map;
+uniform sampler2D u_directional_shadow_map;
+uniform mat4 u_spot_light_viewprojection;
+uniform mat4 u_directional_light_viewprojection;
 
 out vec4 FragColor;
 
@@ -299,17 +303,6 @@ void main()
 
 	if(base_color.a < u_alpha_cutoff)
 		discard;
-
-	vec4 light_space_pos = u_light_viewprojection[3] * vec4(v_world_position, 1.0);
-	float shadow_bias = 0.005;
-
-	float real_depth = (light_space_pos.z - shadow_bias) / light_space_pos.w;
-	real_depth = real_depth * 0.5 + 0.5;
-	vec3 proj_coords = light_space_pos.xyz / light_space_pos.w;
-	proj_coords = proj_coords * 0.5 + 0.5;
-
-	float closest_depth = texture(u_shadow_map[3], proj_coords.xy).r;
-	float shadow = real_depth > closest_depth ? 1.0 : 0.0;
 
 	for(int i=0;i< u_num_lights;i++){
 		vec3 L;
@@ -340,6 +333,36 @@ void main()
 		else if (u_light_type[i] == 3) { // DIRECTIONAL
 			attenuation = u_light_intensity[i];
 			L = D;
+		}
+
+		// SHADOWS
+		float shadow = 0.0;
+		if (u_light_type[i] == 3) {
+			vec4 light_space_pos = u_directional_light_viewprojection * vec4(v_world_position, 1.0);
+
+			vec3 proj_coords = light_space_pos.xyz / light_space_pos.w;
+			proj_coords = proj_coords * 0.5 + 0.5;
+
+			float closest_depth = texture(u_directional_shadow_map, proj_coords.xy).r;
+
+			float current_depth = proj_coords.z - u_shadow_bias;
+
+			shadow = current_depth > closest_depth ? 1.0 : 0.0;
+		}
+		else if (u_light_type[i] == 2) {
+			vec4 light_space_pos = u_spot_light_viewprojection * vec4(v_world_position, 1.0);
+
+			vec3 proj_coords = light_space_pos.xyz / light_space_pos.w;
+			proj_coords = proj_coords * 0.5 + 0.5;
+
+			float closest_depth = texture(u_spot_shadow_map, proj_coords.xy).r;
+
+			float current_depth = proj_coords.z - u_shadow_bias;
+
+			shadow = current_depth > closest_depth ? 1.0 : 0.0;
+		}
+		else if (u_light_type[i] == 1) {
+			shadow = 0.0;
 		}
 			
 		vec3 R = reflect(-L, N);
