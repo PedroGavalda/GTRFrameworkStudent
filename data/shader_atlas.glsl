@@ -280,8 +280,8 @@ uniform vec3 u_light_direction[MAX_LIGHTS];
 uniform vec2 cones[MAX_LIGHTS];
 
 uniform sampler2D u_normal_map;
-uniform sampler2D u_shadow_map;
-uniform mat4 u_light_viewprojection;
+uniform sampler2D u_shadow_map[MAX_LIGHTS];
+uniform mat4 u_light_viewprojection[MAX_LIGHTS];
 
 out vec4 FragColor;
 
@@ -300,7 +300,7 @@ void main()
 	if(base_color.a < u_alpha_cutoff)
 		discard;
 
-	vec4 light_space_pos = u_light_viewprojection * vec4(v_world_position, 1.0);
+	vec4 light_space_pos = u_light_viewprojection[3] * vec4(v_world_position, 1.0);
 	float shadow_bias = 0.005;
 
 	float real_depth = (light_space_pos.z - shadow_bias) / light_space_pos.w;
@@ -308,7 +308,7 @@ void main()
 	vec3 proj_coords = light_space_pos.xyz / light_space_pos.w;
 	proj_coords = proj_coords * 0.5 + 0.5;
 
-	float closest_depth = texture(u_shadow_map, proj_coords.xy).r;
+	float closest_depth = texture(u_shadow_map[3], proj_coords.xy).r;
 	float shadow = real_depth > closest_depth ? 1.0 : 0.0;
 
 	for(int i=0;i< u_num_lights;i++){

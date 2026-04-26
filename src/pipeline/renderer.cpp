@@ -133,7 +133,7 @@ void Renderer::generateShadowMap(std::vector<sRenderable*> opaque) {
 			goto point;
 		}
 
-		//mat4 light_vps = light_cameras[i]->viewprojection_matrix;
+		//mat4 light_vps = light_cameras[i]->viewprojzection_matrix;
 
 		for (const auto& r : opaque) {
 			renderPlain(light_cameras[i].get(), r->model, r->mesh, r->material);
@@ -418,7 +418,13 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 
 	shader->setUniform2Array("cones", &cones[0].x, num_lights);
 
-	shader->setUniform("u_light_viewprojection", light_cameras[3]->viewprojection_matrix);
+	char name[64];
+	sprintf(name, "u_light_viewprojection[%d]", 3);
+	const char* cstr1 = name;
+	shader->setUniform(cstr1, light_cameras[3]->viewprojection_matrix);
+	sprintf(name, "u_shadow_map[%d]", 3);
+	const char* cstr2 = name;
+	shader->setUniform(cstr2, shadow_fbos[3]->depth_texture, 2);
 
 	material->bind(shader);
 
@@ -432,7 +438,6 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	// Upload time, for cool shader effects
 	float t = getTime();
 	shader->setUniform("u_time", t);
-	shader->setUniform("u_shadow_map", shadow_fbos[3]->depth_texture, 2);
 
 	// Render just the verticies as a wireframe
 	if (render_wireframe)
