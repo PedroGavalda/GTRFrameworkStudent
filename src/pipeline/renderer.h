@@ -27,7 +27,6 @@ namespace GFX {
 }
 
 
-
 namespace SCN {
 
 	class Prefab;
@@ -83,6 +82,9 @@ namespace SCN {
 		void generateShadowMap(std::vector<sRenderable*> opaque);
 
 		void renderPlain(Camera* camera, const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material);
+
+		float shadow_bias = 0.0001f;
+		bool use_front_face_culling = true;
 	};
 
 };

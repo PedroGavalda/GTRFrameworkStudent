@@ -103,7 +103,10 @@ void Renderer::generateShadowMap(std::vector<sRenderable*> opaque) {
 		shadow_fbos[i]->bind();
 
 		glEnable(GL_CULL_FACE);
-		glCullFace(GL_FRONT);
+		if (use_front_face_culling)
+			glCullFace(GL_FRONT);
+		else
+			glCullFace(GL_BACK);
 
 		glColorMask(false, false, false, false);
 
@@ -364,15 +367,22 @@ void Renderer::updateLights() {
 		cones.push_back(vec2(cos(alpha_min), cos(alpha_max)));
 	}
 	for (int i=0; i < light_list.size(); i++) {
-		LightEntity* light = light_list.at(3);
+		LightEntity* light = light_list[i];
+
 		mat4 light_model = light->root.getGlobalMatrix();
 		vec3 light_pos = light_model.getTranslation();
-		light_cameras[i]->lookAt(light_pos, light_model * vec3(0.0f, 0.0f, -1.0f), vec3(0.0f, 1.0f, 0.0f));
-		float fov = light->cone_info.y * 2.0f;
-		float aspect = 1.0f;
-		light_cameras[i]->setPerspective(fov, 1.0f, 0.1f, 100.0f);
-	}
 
+		light_cameras[i]->lookAt(
+			light_pos,
+			light_pos + light_model.frontVector(),
+			vec3(0.0f, 1.0f, 0.0f)
+		);
+
+		if (light->light_type == SPOT) {
+			float fov = light->cone_info.y * 2.0f;
+			light_cameras[i]->setPerspective(fov, 1.0f, 0.1f, 100.0f);
+		}
+	}
 }
 
 // Renders a mesh given its transform and material
@@ -402,23 +412,34 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	int num_lights = light_list.size();
 	shader->setUniform("u_num_lights", num_lights);
 
-	if (num_lights == 0) {
-		shader->disable();
-		return;
+
+	if (num_lights > 0) {
+		shader->setUniform3Array("u_light_position", &positions[0].x, num_lights);
+		shader->setUniform3Array("u_light_color", &colors[0].x, num_lights);
+		shader->setUniform1Array("u_light_intensity", intensities.data(), num_lights);
+		shader->setUniform1Array("u_light_type", types.data(), num_lights);
+		shader->setUniform3Array("u_light_direction", &directions[0].x, num_lights);
+		shader->setUniform2Array("cones", &cones[0].x, num_lights);
 	}
 
-	shader->setUniform3Array("u_light_position", &positions[0].x, num_lights);
-	shader->setUniform3Array("u_light_color", &colors[0].x, num_lights);
-	shader->setUniform1Array("u_light_intensity", intensities.data(), num_lights);
-
 	shader->setUniform("u_ambient_light", scene->ambient_light);
+	shader->setUniform("u_shadow_bias", shadow_bias);
 
-	shader->setUniform1Array("u_light_type", types.data(), num_lights);
-	shader->setUniform3Array("u_light_direction", &directions[0].x, num_lights);
+	int spot_index = -1;
+	int dir_index = -1;
 
-	shader->setUniform2Array("cones", &cones[0].x, num_lights);
+	for (int i = 0; i < light_list.size(); i++) {
+		if (light_list[i]->light_type == SPOT && spot_index == -1)
+			spot_index = i;
+		else if (light_list[i]->light_type == DIRECTIONAL && dir_index == -1)
+			dir_index = i;
+	}
 
-	shader->setUniform("u_light_viewprojection", light_cameras[3]->viewprojection_matrix);
+	if (spot_index != -1 && spot_index < light_cameras.size())
+		shader->setUniform("u_spot_light_viewprojection", light_cameras[spot_index]->viewprojection_matrix);
+
+	if (dir_index != -1 && dir_index < light_cameras.size())
+		shader->setUniform("u_directional_light_viewprojection", light_cameras[dir_index]->viewprojection_matrix);
 
 	material->bind(shader);
 
@@ -432,7 +453,12 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	// Upload time, for cool shader effects
 	float t = getTime();
 	shader->setUniform("u_time", t);
-	shader->setUniform("u_shadow_map", shadow_fbos[3]->depth_texture, 2);
+
+	if (spot_index != -1 && spot_index < shadow_fbos.size())
+		shader->setUniform("u_spot_shadow_map", shadow_fbos[spot_index]->depth_texture, 3);
+
+	if (dir_index != -1 && dir_index < shadow_fbos.size())
+		shader->setUniform("u_directional_shadow_map", shadow_fbos[dir_index]->depth_texture, 4);
 
 	// Render just the verticies as a wireframe
 	if (render_wireframe)
@@ -458,8 +484,9 @@ void Renderer::showUI()
 	ImGui::Checkbox("Boundaries", &render_boundaries);
 
 	//add here your stuff
-	//...
 	ImGui::SliderFloat("Shininess", &global_shininess, 1.0f, 100.0f);
+	ImGui::SliderFloat("Shadow Bias", &shadow_bias, 0.0001f, 0.01f, "%.4f", ImGuiSliderFlags_Logarithmic);
+	ImGui::Checkbox("Forward Face Culling", &use_front_face_culling);
 }
 
 #else
