@@ -98,7 +98,7 @@ void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam) {
 }
 
 void Renderer::generateShadowMap(std::vector<sRenderable*> opaque) {
-	for(int i = 0; i<light_list.size(); i++){
+	for (int i = 0; i < light_list.size(); i++) {
 
 		shadow_fbos[i]->bind();
 
@@ -136,13 +136,13 @@ void Renderer::generateShadowMap(std::vector<sRenderable*> opaque) {
 			goto point;
 		}
 
-		//mat4 light_vps = light_cameras[i]->viewprojzection_matrix;
+		//mat4 light_vps = light_cameras[i]->viewprojection_matrix;
 
 		for (const auto& r : opaque) {
 			renderPlain(light_cameras[i].get(), r->model, r->mesh, r->material);
 		}
 
-		point:
+	point:
 		glColorMask(true, true, true, true);
 
 		glCullFace(GL_BACK);
@@ -253,11 +253,11 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	//render skybox
 	if (skybox_cubemap)
 		renderSkybox(skybox_cubemap);
-	
-	 //HERE =====================
-	 //TODO: RENDER RENDERABLES
-	 //==========================
-	
+
+	//HERE =====================
+	//TODO: RENDER RENDERABLES
+	//==========================
+
 	for (auto* r : opaque) {
 		if (is_in_frustum(r, camera)) {
 			renderMeshWithMaterial(r->model, r->mesh, r->material);
@@ -280,7 +280,7 @@ bool Renderer::is_in_frustum(sRenderable* r, Camera* camera) {
 	int counter_outs = 0;
 	for (int i = 0;i < 8;i++) {
 		aabb_coordinates[i] = aabb_min;
-		if (i>=4) aabb_coordinates[i].x = aabb_max.x;
+		if (i >= 4) aabb_coordinates[i].x = aabb_max.x;
 		if (i % 4 == 2 || i % 4 == 3) aabb_coordinates[i].y = aabb_max.y;
 		if (i % 2 == 1) aabb_coordinates[i].z = aabb_max.z;
 		aabb_coordinates[i] = r->model * aabb_coordinates[i];
@@ -351,7 +351,7 @@ void Renderer::updateLights() {
 	types.clear();
 	directions.clear();
 	cones.clear();
-	
+
 	for (LightEntity* l : light_list) {
 		positions.push_back(l->root.getGlobalMatrix().getTranslation());
 		colors.push_back(l->color);
@@ -361,12 +361,12 @@ void Renderer::updateLights() {
 
 		vec3 dir = l->root.getGlobalMatrix().frontVector();
 		directions.push_back(dir);
-		
+
 		float alpha_min = l->cone_info.x * DEG2RAD;
 		float alpha_max = l->cone_info.y * DEG2RAD;
 		cones.push_back(vec2(cos(alpha_min), cos(alpha_max)));
 	}
-	for (int i=0; i < light_list.size(); i++) {
+	for (int i = 0; i < light_list.size(); i++) {
 		LightEntity* light = light_list[i];
 
 		mat4 light_model = light->root.getGlobalMatrix();
@@ -453,6 +453,12 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	// Upload time, for cool shader effects
 	float t = getTime();
 	shader->setUniform("u_time", t);
+
+	if (spot_index != -1 && spot_index < shadow_fbos.size())
+		shader->setUniform("u_spot_shadow_map", shadow_fbos[spot_index]->depth_texture, 3);
+
+	if (dir_index != -1 && dir_index < shadow_fbos.size())
+		shader->setUniform("u_directional_shadow_map", shadow_fbos[dir_index]->depth_texture, 4);
 
 	// Render just the verticies as a wireframe
 	if (render_wireframe)
