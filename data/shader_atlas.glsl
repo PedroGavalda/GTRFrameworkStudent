@@ -7,6 +7,7 @@ multi basic.vs multi.fs
 plain basic.vs plain.fs
 //mio
 phong basic.vs phong.fs
+gbuffer_fill basic.vs gbuffer_fill.fs
 
 \perturbNormal
 
@@ -389,4 +390,49 @@ void main()
 	if(texture(u_texture, v_uv).a < u_alpha_cutoff)
 		discard;
 	FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+}
+
+\gbuffer_fill.fs
+
+#version 330 core
+#include "perturbNormal"
+
+// Recibidos del basic.vs
+in vec3 v_position;
+in vec3 v_world_position;
+in vec3 v_normal; // Esta es la normal interpolada del vértice
+in vec2 v_uv;
+
+// Uniforms del Material
+uniform vec4 u_color;
+uniform sampler2D u_texture;    // Albedo
+uniform sampler2D u_normal_map; // Normal map (opcional)
+uniform float u_alpha_cutoff;
+
+// Salidas al G-Buffer
+layout(location = 0) out vec4 gbuffer_albedo;
+layout(location = 1) out vec4 gbuffer_normal;
+
+void main() {
+    // 1. Obtener el color base y aplicar transparencia
+    vec4 tex_color = texture(u_texture, v_uv);
+    vec4 final_color = u_color * tex_color;
+
+    if(final_color.a < u_alpha_cutoff)
+        discard;
+
+    // 2. Calcular la Normal final
+    // Si tienes normal map, lo usamos. Si no, usamos la normal del vértice.
+    vec3 N = normalize(v_normal);
+    
+    // Si quieres usar Normal Maps en el G-Buffer:
+    // vec3 map_normal = texture(u_normal_map, v_uv).xyz * 2.0 - 1.0;
+    // N = perturbNormal(N, v_world_position, v_uv, map_normal);
+
+    // 3. Llenar los Buffers
+    // Albedo: Color simple
+    gbuffer_albedo = vec4(final_color.rgb, 1.0);
+
+    // Normales: Mapeadas de [-1, 1] a [0, 1] para evitar errores de precisión
+    gbuffer_normal = vec4(N * 0.5 + 0.5, 1.0);
 }

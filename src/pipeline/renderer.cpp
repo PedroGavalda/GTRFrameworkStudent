@@ -34,6 +34,7 @@ Renderer::Renderer(const char* shader_atlas_filename)
 
 	sphere.createSphere(1.0f);
 	sphere.uploadToVRAM();
+	gbuffer_fbo.create(1920, 1080, 2, GL_RGBA, GL_UNSIGNED_BYTE, true);
 }
 
 void Renderer::setupScene()
@@ -219,11 +220,6 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	//set the clear color (the background color)
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
 
-	// Clear the color and the depth buffer
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	GFX::checkGLErrors();
-	Camera* player_cam = camera;
-
 	std::vector<sRenderable*> opaque;
 	std::vector<sRenderable*> transparent;
 	for (auto& r : render_list) {
@@ -233,6 +229,7 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 		else
 			opaque.push_back(&r);
 	}
+
 	std::sort(opaque.begin(), opaque.end(), [&](sRenderable* a, sRenderable* b) {
 		float da = (a->model.getTranslation() - camera->eye).length();
 		float db = (b->model.getTranslation() - camera->eye).length();
@@ -243,8 +240,21 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 		float db = (b->model.getTranslation() - camera->eye).length();
 		return da > db;}
 	);
-
 	updateLights();
+
+	// Clear the color and the depth buffer
+	gbuffer_fbo.bind();
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	for (auto* r : opaque) {
+		if (is_in_frustum(r, camera)) {
+			renderMeshWithMaterial(r->model, r->mesh, r->material);
+		}
+	}
+	gbuffer_fbo.unbind();
+	gbuffer_fbo.color_textures[1]->toViewport();
+	GFX::checkGLErrors();
+	Camera* player_cam = camera;
+
 
 
 	generateShadowMap(opaque);
@@ -258,18 +268,8 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	//TODO: RENDER RENDERABLES
 	//==========================
 
-	for (auto* r : opaque) {
-		if (is_in_frustum(r, camera)) {
-			renderMeshWithMaterial(r->model, r->mesh, r->material);
-		}
-	}
-	for (auto* r : transparent) {
-		if (is_in_frustum(r, camera)) {
-			renderMeshWithMaterial(r->model, r->mesh, r->material);
-		}
-	}
-
 }
+
 
 bool Renderer::is_in_frustum(sRenderable* r, Camera* camera) {
 	if (!r || !camera)
@@ -400,7 +400,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	glEnable(GL_DEPTH_TEST);
 
 	//chose a shader
-	shader = GFX::Shader::Get("phong");
+	shader = GFX::Shader::Get("gbuffer_fill");
 
 	assert(glGetError() == GL_NO_ERROR);
 

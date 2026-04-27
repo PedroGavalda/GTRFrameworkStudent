@@ -50,7 +50,7 @@ namespace SCN {
 		bool render_boundaries;
 
 		GFX::Texture* skybox_cubemap;
-
+		GFX::FBO gbuffer_fbo;
 		SCN::Scene* scene;
 
 		//updated every frame
