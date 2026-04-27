@@ -247,11 +247,11 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	for (auto* r : opaque) {
 		if (is_in_frustum(r, camera)) {
-			renderMeshWithMaterial(r->model, r->mesh, r->material);
+			renderMeshWithMaterial(r->model, r->mesh, r->material, "gbuffer_fill");
 		}
 	}
 	gbuffer_fbo.unbind();
-	gbuffer_fbo.color_textures[1]->toViewport();
+
 	GFX::checkGLErrors();
 	Camera* player_cam = camera;
 
@@ -267,6 +267,17 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	//HERE =====================
 	//TODO: RENDER RENDERABLES
 	//==========================
+
+	for (auto* r : opaque) {
+		if (is_in_frustum(r, camera)) {
+			renderMeshWithMaterial(r->model, r->mesh, r->material, "phong");
+		}
+	}
+	for (auto* r : transparent) {
+		if (is_in_frustum(r, camera)) {
+			renderMeshWithMaterial(r->model, r->mesh, r->material, "phong");
+		}
+	}
 
 }
 
@@ -386,7 +397,7 @@ void Renderer::updateLights() {
 }
 
 // Renders a mesh given its transform and material
-void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material)
+void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material, const char* type_shader)
 {
 	//in case there is nothing to do
 	if (!mesh || !mesh->getNumVertices() || !material)
@@ -400,7 +411,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	glEnable(GL_DEPTH_TEST);
 
 	//chose a shader
-	shader = GFX::Shader::Get("gbuffer_fill");
+	shader = GFX::Shader::Get(type_shader);
 
 	assert(glGetError() == GL_NO_ERROR);
 
