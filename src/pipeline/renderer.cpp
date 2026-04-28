@@ -245,6 +245,8 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	// Clear the color and the depth buffer
 	gbuffer_fbo.bind();
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	if (skybox_cubemap)
+		renderSkybox(skybox_cubemap);
 	for (auto* r : opaque) {
 		if (is_in_frustum(r, camera)) {
 			renderMeshWithMaterial(r->model, r->mesh, r->material, "gbuffer_fill");
@@ -277,19 +279,16 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	light_pass_shader->disable();
 	glEnable(GL_DEPTH_TEST);
 
-	//render skybox
-	if (skybox_cubemap)
-		renderSkybox(skybox_cubemap);
 
 	//HERE =====================
 	//TODO: RENDER RENDERABLES
 	//==========================
 
-	for (auto* r : opaque) {
-		if (is_in_frustum(r, camera)) {
-			renderMeshWithMaterial(r->model, r->mesh, r->material, "phong");
-		}
-	}
+	//for (auto* r : opaque) {
+	//	if (is_in_frustum(r, camera)) {
+	//		renderMeshWithMaterial(r->model, r->mesh, r->material, "phong");
+	//	}
+	//}
 	for (auto* r : transparent) {
 		if (is_in_frustum(r, camera)) {
 			renderMeshWithMaterial(r->model, r->mesh, r->material, "phong");
@@ -338,7 +337,7 @@ void Renderer::renderSkybox(GFX::Texture* cubemap)
 	if (render_wireframe)
 		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
-	GFX::Shader* shader = GFX::Shader::Get("skybox");
+	GFX::Shader* shader = GFX::Shader::Get("skybox_gbuffer");
 	if (!shader)
 		return;
 	shader->enable();

@@ -9,6 +9,7 @@ plain basic.vs plain.fs
 phong basic.vs phong.fs
 gbuffer_fill basic.vs gbuffer_fill.fs
 deferred_light quad.vs deferred_light.fs
+skybox_gbuffer basic.vs skybox_gbuffer.fs
 
 \perturbNormal
 
@@ -291,9 +292,6 @@ uniform mat4 u_directional_light_viewprojection;
 
 out vec4 FragColor;
 
-layout(location = 0) out vec4 gbuffer_albedo;
-layout(location = 1) out vec4 gbuffer_normal;
-
 void main() 
 {
 	vec3 map_normal = texture(u_normal_map, v_uv).xyz * 2.0 - 1.0;
@@ -423,7 +421,11 @@ void main() {
         discard;
 
     vec3 N = normalize(v_normal);
-    
+    vec3 normal_pixel = texture(u_normal_map, v_uv).xyz;
+	if (length(normal_pixel) > 0.01) {
+		N = perturbNormal(N, v_world_position, v_uv, normal_pixel * 2.0 - 1.0);
+	}
+	gbuffer_normal = vec4(N * 0.5 + 0.5, 1.0);
     vec3 map_normal = texture(u_normal_map, v_uv).xyz * 2.0 - 1.0;
     N = perturbNormal(N, v_world_position, v_uv, map_normal);
 
@@ -433,9 +435,8 @@ void main() {
 }
 
 \deferred_light.fs
-
 #version 330 core
-
+#include "perturbNormal"
 #define MAX_LIGHTS 8
 
 in vec2 v_uv;
@@ -448,20 +449,20 @@ uniform mat4 u_inverse_viewprojection;
 uniform vec3 u_camera_position;
 
 uniform int u_num_lights;
-
 uniform vec3 u_light_position[MAX_LIGHTS];
 uniform vec3 u_light_color[MAX_LIGHTS];
 uniform float u_light_intensity[MAX_LIGHTS];
 
 uniform vec3 u_ambient_light;
 uniform float u_shininess;
+uniform float u_alpha_cutoff;
 uniform float u_shadow_bias;
 
 uniform int u_light_type[MAX_LIGHTS];
 uniform vec3 u_light_direction[MAX_LIGHTS];
-
 uniform vec2 cones[MAX_LIGHTS];
 
+uniform sampler2D u_normal_map;
 uniform sampler2D u_spot_shadow_map;
 uniform sampler2D u_directional_shadow_map;
 uniform mat4 u_spot_light_viewprojection;
@@ -471,67 +472,96 @@ out vec4 FragColor;
 
 void main() 
 {
-	float depth = texture(u_gbuffer_depth, v_uv).r;
-    if (depth == 1.0) discard;
-	vec4 screen_pos = vec4(v_uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
-    vec4 world_pos_h = u_inverse_viewprojection * screen_pos;
-    vec3 v_world_position = world_pos_h.xyz / world_pos_h.w;
-
-    vec3 N = normalize(texture(u_gbuffer_normal, v_uv).xyz * 2.0 - 1.0);
+    float depth = texture(u_gbuffer_depth, v_uv).r;
+    vec4 clipSpacePosition = vec4(v_uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+    vec4 worldPos = u_inverse_viewprojection * clipSpacePosition;
+    vec3 v_world_position = worldPos.xyz / worldPos.w;
+	
     vec4 base_color = texture(u_gbuffer_color, v_uv);
-
+    if(base_color.a < u_alpha_cutoff)
+        discard;
+	if (depth >= 1.0) discard;
+    vec3 gbuffer_normal = normalize(texture(u_gbuffer_normal, v_uv).xyz * 2.0 - 1.0);
+    vec3 map_normal = texture(u_normal_map, v_uv).xyz * 2.0 - 1.0;
+    vec3 N = perturbNormal(gbuffer_normal, v_world_position, v_uv, map_normal);
     vec3 V = normalize(u_camera_position - v_world_position);
+    
     vec3 ambient = base_color.rgb * u_ambient_light;
     vec3 diffuse = vec3(0.0);
     vec3 specular = vec3(0.0);
 
-    for(int i = 0; i < u_num_lights; i++) {
+    for(int i=0; i < u_num_lights; i++){
         vec3 L;
-        float attenuation = 1.0;
+        float attenuation = 0.0;
         vec3 D = normalize(u_light_direction[i]);
 
-        if (u_light_type[i] == 1) { // POINT
-            float dist = length(u_light_position[i] - v_world_position);
-            attenuation = u_light_intensity[i] / (dist * dist);
+        if (u_light_type[i] == 1) { 
+            float distance = length(u_light_position[i] - v_world_position);
+            attenuation = u_light_intensity[i] / (distance * distance);
             L = normalize(u_light_position[i] - v_world_position);
         }
-        else if (u_light_type[i] == 2) { // SPOT
-            float dist = length(u_light_position[i] - v_world_position);
-            attenuation = u_light_intensity[i] / (dist * dist);
+        else if (u_light_type[i] == 2) {
+            float distance = length(u_light_position[i] - v_world_position);
+            attenuation = u_light_intensity[i] / (distance * distance);
             L = normalize(u_light_position[i] - v_world_position);
-            float cos_theta = dot(L, -D);
-            
-            if (dot(L, D) >= cones[i].y) {
-                attenuation *= (dot(L, D) - cones[i].y) / (cones[i].x - cones[i].y);
+            float cosTheta = dot(L, -D);
+            if (cosTheta >= cones[i].y) {
+                attenuation *= (cosTheta - cones[i].y) / (cones[i].x - cones[i].y);
             } else {
                 attenuation = 0.0;
             }
         }
-        else if (u_light_type[i] == 3) { // DIRECTIONAL
+        else if (u_light_type[i] == 3) {
             attenuation = u_light_intensity[i];
-            L = D;
+            L = -D;
         }
 
         float shadow = 0.0;
         if (u_light_type[i] == 3) {
             vec4 light_space_pos = u_directional_light_viewprojection * vec4(v_world_position, 1.0);
-            vec3 proj_coords = (light_space_pos.xyz / light_space_pos.w) * 0.5 + 0.5;
+            vec3 proj_coords = light_space_pos.xyz / light_space_pos.w;
+            proj_coords = proj_coords * 0.5 + 0.5;
             float closest_depth = texture(u_directional_shadow_map, proj_coords.xy).r;
-            shadow = (proj_coords.z - u_shadow_bias) > closest_depth ? 1.0 : 0.0;
+            float current_depth = proj_coords.z - u_shadow_bias;
+            shadow = current_depth > closest_depth ? 1.0 : 0.0;
         }
         else if (u_light_type[i] == 2) {
             vec4 light_space_pos = u_spot_light_viewprojection * vec4(v_world_position, 1.0);
-            vec3 proj_coords = (light_space_pos.xyz / light_space_pos.w) * 0.5 + 0.5;
+            vec3 proj_coords = light_space_pos.xyz / light_space_pos.w;
+            proj_coords = proj_coords * 0.5 + 0.5;
             float closest_depth = texture(u_spot_shadow_map, proj_coords.xy).r;
-            shadow = (proj_coords.z - u_shadow_bias) > closest_depth ? 1.0 : 0.0;
+            float current_depth = proj_coords.z - u_shadow_bias;
+            shadow = current_depth > closest_depth ? 1.0 : 0.0;
         }
-
-        float light_factor = 1.0 - shadow;
+            
         vec3 R = reflect(-L, N);
-        
+        float light_factor = 1.0 - shadow;
         diffuse += base_color.rgb * max(dot(N, L), 0.0) * attenuation * u_light_color[i] * light_factor;
-        specular += pow(max(dot(R, V), 0.0), u_shininess) * attenuation * u_light_color[i] * light_factor;
+        specular += base_color.rgb * pow(max(dot(R, V), 0.0), u_shininess) * attenuation * u_light_color[i] * light_factor;
     }
 
-    FragColor = vec4(ambient + diffuse + specular, 1.0);
+    vec3 final_color = ambient + diffuse + specular;
+    FragColor = vec4(final_color, base_color.a);
+}
+
+\skybox_gbuffer.fs
+
+#version 330 core
+
+in vec3 v_position;
+in vec3 v_world_position;
+
+uniform samplerCube u_texture;
+uniform vec3 u_camera_position;
+out vec4 FragColor;
+
+layout(location = 0) out vec4 gbuffer_albedo;
+layout(location = 1) out vec4 gbuffer_normal;
+
+void main()
+{
+	vec3 E = v_world_position - u_camera_position;
+	vec4 color = texture( u_texture, E );
+	gbuffer_normal = vec4(0.0, 0.0, 0.0, 0.0);
+	gbuffer_albedo = color;
 }
