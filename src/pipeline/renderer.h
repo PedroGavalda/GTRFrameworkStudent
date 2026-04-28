@@ -85,6 +85,8 @@ namespace SCN {
 
 		float shadow_bias = 0.0001f;
 		bool use_front_face_culling = true;
+
+		void sendLightUniforms(GFX::Shader* shader);
 	};
 
 };

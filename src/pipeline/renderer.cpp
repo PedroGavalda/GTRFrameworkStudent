@@ -34,7 +34,7 @@ Renderer::Renderer(const char* shader_atlas_filename)
 
 	sphere.createSphere(1.0f);
 	sphere.uploadToVRAM();
-	gbuffer_fbo.create(1920, 1080, 2, GL_RGBA, GL_UNSIGNED_BYTE, true);
+	gbuffer_fbo.create(1920, 1200, 2, GL_RGBA, GL_UNSIGNED_BYTE, true);
 }
 
 void Renderer::setupScene()
@@ -251,14 +251,31 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 		}
 	}
 	gbuffer_fbo.unbind();
-
 	GFX::checkGLErrors();
 	Camera* player_cam = camera;
 
 
-
 	generateShadowMap(opaque);
 	player_cam->enable();
+
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_BLEND);
+	GFX::Mesh* quad = GFX::Mesh::getQuad();
+	GFX::Shader* light_pass_shader;
+	light_pass_shader = GFX::Shader::Get("deferred_light");
+	light_pass_shader->enable();
+	sendLightUniforms(light_pass_shader);
+	Matrix44 inverse_matrix = camera->viewprojection_matrix;
+	inverse_matrix.inverse();
+	light_pass_shader->setUniform("u_inverse_viewprojection", inverse_matrix);
+	light_pass_shader->setUniform("u_camera_position", camera->eye);
+	light_pass_shader->setTexture("u_gbuffer_color", gbuffer_fbo.color_textures[0], 0);
+	light_pass_shader->setTexture("u_gbuffer_normal", gbuffer_fbo.color_textures[1], 1);
+	light_pass_shader->setTexture("u_gbuffer_depth", gbuffer_fbo.depth_texture, 2);
+	quad->render(GL_TRIANGLES);
+
+	light_pass_shader->disable();
+	glEnable(GL_DEPTH_TEST);
 
 	//render skybox
 	if (skybox_cubemap)
@@ -498,6 +515,40 @@ void Renderer::showUI()
 	ImGui::SliderFloat("Shininess", &global_shininess, 1.0f, 100.0f);
 	ImGui::SliderFloat("Shadow Bias", &shadow_bias, 0.0001f, 0.01f, "%.4f", ImGuiSliderFlags_Logarithmic);
 	ImGui::Checkbox("Forward Face Culling", &use_front_face_culling);
+}
+
+void Renderer::sendLightUniforms(GFX::Shader* shader) {
+	int num_lights = light_list.size();
+	shader->setUniform("u_num_lights", num_lights);
+
+	if (num_lights > 0) {
+		shader->setUniform3Array("u_light_position", &positions[0].x, num_lights);
+		shader->setUniform3Array("u_light_color", &colors[0].x, num_lights);
+		shader->setUniform1Array("u_light_intensity", intensities.data(), num_lights);
+		shader->setUniform1Array("u_light_type", types.data(), num_lights);
+		shader->setUniform3Array("u_light_direction", &directions[0].x, num_lights);
+		shader->setUniform2Array("cones", &cones[0].x, num_lights);
+	}
+
+	shader->setUniform("u_ambient_light", scene->ambient_light);
+	shader->setUniform("u_shadow_bias", shadow_bias);
+
+	int spot_index = -1;
+	int dir_index = -1;
+	for (int i = 0; i < light_list.size(); i++) {
+		if (light_list[i]->light_type == SPOT && spot_index == -1) spot_index = i;
+		else if (light_list[i]->light_type == DIRECTIONAL && dir_index == -1) dir_index = i;
+	}
+
+	if (spot_index != -1 && spot_index < light_cameras.size()) {
+		shader->setUniform("u_spot_light_viewprojection", light_cameras[spot_index]->viewprojection_matrix);
+		shader->setUniform("u_spot_shadow_map", shadow_fbos[spot_index]->depth_texture, 3);
+	}
+
+	if (dir_index != -1 && dir_index < light_cameras.size()) {
+		shader->setUniform("u_directional_light_viewprojection", light_cameras[dir_index]->viewprojection_matrix);
+		shader->setUniform("u_directional_shadow_map", shadow_fbos[dir_index]->depth_texture, 4);
+	}
 }
 
 #else
