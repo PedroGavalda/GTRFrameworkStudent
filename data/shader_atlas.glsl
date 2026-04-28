@@ -436,7 +436,7 @@ void main() {
 
 \deferred_light.fs
 #version 330 core
-#include "perturbNormal"
+
 #define MAX_LIGHTS 8
 
 in vec2 v_uv;
@@ -449,6 +449,7 @@ uniform mat4 u_inverse_viewprojection;
 uniform vec3 u_camera_position;
 
 uniform int u_num_lights;
+
 uniform vec3 u_light_position[MAX_LIGHTS];
 uniform vec3 u_light_color[MAX_LIGHTS];
 uniform float u_light_intensity[MAX_LIGHTS];
@@ -458,11 +459,13 @@ uniform float u_shininess;
 uniform float u_alpha_cutoff;
 uniform float u_shadow_bias;
 
-uniform int u_light_type[MAX_LIGHTS];
+uniform int u_light_type[MAX_LIGHTS]; // 0: no_light | 1: point | 2: spot | 3: directional
 uniform vec3 u_light_direction[MAX_LIGHTS];
+
 uniform vec2 cones[MAX_LIGHTS];
 
 uniform sampler2D u_normal_map;
+
 uniform sampler2D u_spot_shadow_map;
 uniform sampler2D u_directional_shadow_map;
 uniform mat4 u_spot_light_viewprojection;
@@ -472,76 +475,91 @@ out vec4 FragColor;
 
 void main() 
 {
-    float depth = texture(u_gbuffer_depth, v_uv).r;
-    vec4 clipSpacePosition = vec4(v_uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+	float depth = texture(u_gbuffer_depth, v_uv).r;
+	vec3 N = texture(u_gbuffer_normal, v_uv).xyz * 2.0 - 1.0;
+	N = normalize(N);
+	vec4 clipSpacePosition = vec4(v_uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
     vec4 worldPos = u_inverse_viewprojection * clipSpacePosition;
-    vec3 v_world_position = worldPos.xyz / worldPos.w;
+	vec3 v_world_position = worldPos.xyz / worldPos.w;
+	vec3 V = normalize(u_camera_position - v_world_position);
 	
-    vec4 base_color = texture(u_gbuffer_color, v_uv);
-    if(base_color.a < u_alpha_cutoff)
-        discard;
-	if (depth >= 1.0) discard;
-    vec3 gbuffer_normal = normalize(texture(u_gbuffer_normal, v_uv).xyz * 2.0 - 1.0);
-    vec3 map_normal = texture(u_normal_map, v_uv).xyz * 2.0 - 1.0;
-    vec3 N = perturbNormal(gbuffer_normal, v_world_position, v_uv, map_normal);
-    vec3 V = normalize(u_camera_position - v_world_position);
-    
-    vec3 ambient = base_color.rgb * u_ambient_light;
-    vec3 diffuse = vec3(0.0);
-    vec3 specular = vec3(0.0);
+	// color del material
+	vec4 base_color = texture(u_gbuffer_color, v_uv);
+	vec3 ambient = base_color.rgb * u_ambient_light; //ka * Ia
+	vec3 diffuse = vec3(0.0);
+	vec3 specular = vec3(0.0);
 
-    for(int i=0; i < u_num_lights; i++){
-        vec3 L;
-        float attenuation = 0.0;
-        vec3 D = normalize(u_light_direction[i]);
+	if(base_color.a < u_alpha_cutoff)
+		discard;
 
-        if (u_light_type[i] == 1) { 
-            float distance = length(u_light_position[i] - v_world_position);
-            attenuation = u_light_intensity[i] / (distance * distance);
-            L = normalize(u_light_position[i] - v_world_position);
-        }
-        else if (u_light_type[i] == 2) {
-            float distance = length(u_light_position[i] - v_world_position);
-            attenuation = u_light_intensity[i] / (distance * distance);
-            L = normalize(u_light_position[i] - v_world_position);
-            float cosTheta = dot(L, -D);
-            if (cosTheta >= cones[i].y) {
-                attenuation *= (cosTheta - cones[i].y) / (cones[i].x - cones[i].y);
-            } else {
-                attenuation = 0.0;
-            }
-        }
-        else if (u_light_type[i] == 3) {
-            attenuation = u_light_intensity[i];
-            L = -D;
-        }
+	for(int i=0;i< u_num_lights;i++){
+		vec3 L;
+		float attenuation;
+		vec3 D = normalize(u_light_direction[i]);
 
-        float shadow = 0.0;
-        if (u_light_type[i] == 3) {
-            vec4 light_space_pos = u_directional_light_viewprojection * vec4(v_world_position, 1.0);
-            vec3 proj_coords = light_space_pos.xyz / light_space_pos.w;
-            proj_coords = proj_coords * 0.5 + 0.5;
-            float closest_depth = texture(u_directional_shadow_map, proj_coords.xy).r;
-            float current_depth = proj_coords.z - u_shadow_bias;
-            shadow = current_depth > closest_depth ? 1.0 : 0.0;
-        }
-        else if (u_light_type[i] == 2) {
-            vec4 light_space_pos = u_spot_light_viewprojection * vec4(v_world_position, 1.0);
-            vec3 proj_coords = light_space_pos.xyz / light_space_pos.w;
-            proj_coords = proj_coords * 0.5 + 0.5;
-            float closest_depth = texture(u_spot_shadow_map, proj_coords.xy).r;
-            float current_depth = proj_coords.z - u_shadow_bias;
-            shadow = current_depth > closest_depth ? 1.0 : 0.0;
-        }
-            
-        vec3 R = reflect(-L, N);
-        float light_factor = 1.0 - shadow;
-        diffuse += base_color.rgb * max(dot(N, L), 0.0) * attenuation * u_light_color[i] * light_factor;
-        specular += base_color.rgb * pow(max(dot(R, V), 0.0), u_shininess) * attenuation * u_light_color[i] * light_factor;
-    }
+		// POINT LIGHT
+		if (u_light_type[i] == 1) { 
+			float distance = length(u_light_position[i] - v_world_position);
+			attenuation = u_light_intensity[i] / (distance * distance);
+			L = normalize(u_light_position[i] - v_world_position);
+		}
 
-    vec3 final_color = ambient + diffuse + specular;
-    FragColor = vec4(final_color, base_color.a);
+		// SPOTLIGHT LIGHT
+		else if (u_light_type[i] == 2) {
+			float distance = length(u_light_position[i] - v_world_position);
+			attenuation = u_light_intensity[i] / (distance * distance);
+			L = normalize(u_light_position[i] - v_world_position);
+			
+			if (dot(L, D) >= cones[i].y) {
+				attenuation *= (dot(L,D) - cones[i].y) / (cones[i].x - cones[i].y);
+			} else {
+				attenuation *= 0.0;
+			}
+		}
+
+		// DIRECTIONAL LIGHT
+		else if (u_light_type[i] == 3) { // DIRECTIONAL
+			attenuation = u_light_intensity[i];
+			L = D;
+		}
+
+		// SHADOWS
+		float shadow = 0.0;
+		if (u_light_type[i] == 3) {
+			vec4 light_space_pos = u_directional_light_viewprojection * vec4(v_world_position, 1.0);
+
+			vec3 proj_coords = light_space_pos.xyz / light_space_pos.w;
+			proj_coords = proj_coords * 0.5 + 0.5;
+
+			float closest_depth = texture(u_directional_shadow_map, proj_coords.xy).r;
+
+			float current_depth = proj_coords.z - u_shadow_bias;
+
+			shadow = current_depth > closest_depth ? 1.0 : 0.0;
+		}
+		else if (u_light_type[i] == 2) {
+			vec4 light_space_pos = u_spot_light_viewprojection * vec4(v_world_position, 1.0);
+
+			vec3 proj_coords = light_space_pos.xyz / light_space_pos.w;
+			proj_coords = proj_coords * 0.5 + 0.5;
+
+			float closest_depth = texture(u_spot_shadow_map, proj_coords.xy).r;
+
+			float current_depth = proj_coords.z - u_shadow_bias;
+
+			shadow = current_depth > closest_depth ? 1.0 : 0.0;
+		}
+		else if (u_light_type[i] == 1) {
+			shadow = 0.0;
+		}
+			
+		vec3 R = reflect(-L, N);
+		float light_factor = 1.0 - shadow;
+		diffuse += base_color.rgb * max(dot(N, L), 0.0) * attenuation * u_light_color[i] * light_factor; //kd * (Lj * N) * Li^dir
+		specular += base_color.rgb * pow(max(dot(R, V), 0.0), u_shininess) * attenuation * u_light_color[i] * light_factor; //ks * (Rj * V)^a Li^dir(Lj)
+	}
+	vec3 final_color = ambient + diffuse + specular;
+	FragColor = vec4(final_color, base_color.a);
 }
 
 \skybox_gbuffer.fs

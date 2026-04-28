@@ -267,13 +267,12 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	light_pass_shader = GFX::Shader::Get("deferred_light");
 	light_pass_shader->enable();
 	sendLightUniforms(light_pass_shader);
-	Matrix44 inverse_matrix = camera->viewprojection_matrix;
-	inverse_matrix.inverse();
-	light_pass_shader->setUniform("u_inverse_viewprojection", inverse_matrix);
+	light_pass_shader->setUniform("u_shininess", global_shininess);
+	light_pass_shader->setUniform("u_inverse_viewprojection", camera->inverse_viewprojection_matrix);
 	light_pass_shader->setUniform("u_camera_position", camera->eye);
 	light_pass_shader->setTexture("u_gbuffer_color", gbuffer_fbo.color_textures[0], 0);
 	light_pass_shader->setTexture("u_gbuffer_normal", gbuffer_fbo.color_textures[1], 1);
-	light_pass_shader->setTexture("u_gbuffer_depth", gbuffer_fbo.depth_texture, 2);
+	light_pass_shader->setTexture("u_gbuffer_depth", gbuffer_fbo.depth_texture, 9);
 	quad->render(GL_TRIANGLES);
 
 	light_pass_shader->disable();
@@ -289,11 +288,11 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	//		renderMeshWithMaterial(r->model, r->mesh, r->material, "phong");
 	//	}
 	//}
-	for (auto* r : transparent) {
-		if (is_in_frustum(r, camera)) {
-			renderMeshWithMaterial(r->model, r->mesh, r->material, "phong");
-		}
-	}
+	//for (auto* r : transparent) {
+	//	if (is_in_frustum(r, camera)) {
+	//		renderMeshWithMaterial(r->model, r->mesh, r->material, "phong");
+	//	}
+	//}
 
 }
 
