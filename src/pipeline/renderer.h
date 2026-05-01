@@ -51,6 +51,7 @@ namespace SCN {
 
 		GFX::Texture* skybox_cubemap;
 		GFX::FBO gbuffer_fbo;
+		GFX::FBO illumination_fbo;
 		SCN::Scene* scene;
 
 		//updated every frame
@@ -87,6 +88,9 @@ namespace SCN {
 		bool use_front_face_culling = true;
 
 		void sendLightUniforms(GFX::Shader* shader);
+
+		void renderAmbientAndDirectional(Camera* camera);
+		void renderLightVolumes(Camera* camera);
 	};
 
 };

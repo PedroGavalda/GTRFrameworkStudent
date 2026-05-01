@@ -10,6 +10,7 @@ phong basic.vs phong.fs
 gbuffer_fill basic.vs gbuffer_fill.fs
 deferred_light quad.vs deferred_light.fs
 skybox_gbuffer basic.vs skybox_gbuffer.fs
+deferred_ambient_directional quad.vs deferred_ambient_directional.fs
 
 \perturbNormal
 
@@ -422,9 +423,6 @@ void main() {
 
     vec3 N = normalize(v_normal);
     vec3 normal_pixel = texture(u_normal_map, v_uv).xyz;
-	if (length(normal_pixel) > 0.01) {
-		N = perturbNormal(N, v_world_position, v_uv, normal_pixel * 2.0 - 1.0);
-	}
 	gbuffer_normal = vec4(N * 0.5 + 0.5, 1.0);
     vec3 map_normal = texture(u_normal_map, v_uv).xyz * 2.0 - 1.0;
     N = perturbNormal(N, v_world_position, v_uv, map_normal);
@@ -560,6 +558,7 @@ void main()
 	}
 	vec3 final_color = ambient + diffuse + specular;
 	FragColor = vec4(final_color, base_color.a);
+	if (depth >=1) FragColor = FragColor*4;
 }
 
 \skybox_gbuffer.fs
@@ -580,6 +579,82 @@ void main()
 {
 	vec3 E = v_world_position - u_camera_position;
 	vec4 color = texture( u_texture, E );
-	gbuffer_normal = vec4(0.0, 0.0, 0.0, 0.0);
+	gbuffer_normal = vec4(1,1,1,1);
 	gbuffer_albedo = color;
+}
+
+\deferred_ambient_directional.fs
+#version 330 core
+
+in vec2 v_uv;
+
+uniform sampler2D u_gbuffer_color;
+uniform sampler2D u_gbuffer_normal;
+uniform sampler2D u_gbuffer_depth;
+
+uniform vec3 u_ambient_light;
+uniform mat4 u_inverse_viewprojection;
+uniform vec3 u_camera_position;
+
+uniform float u_shininess;
+uniform float u_alpha_cutoff;
+uniform float u_shadow_bias;
+
+uniform sampler2D u_directional_shadow_map;
+uniform mat4 u_directional_light_viewprojection;
+
+uniform vec3 u_light_color;
+uniform float u_light_intensity;
+
+uniform vec3 u_light_direction;
+
+out vec4 FragColor;
+
+void main() 
+{
+	float depth = texture(u_gbuffer_depth, v_uv).r;
+	vec3 N = texture(u_gbuffer_normal, v_uv).xyz * 2.0 - 1.0;
+	N = normalize(N);
+	vec4 clipSpacePosition = vec4(v_uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+    vec4 worldPos = u_inverse_viewprojection * clipSpacePosition;
+	vec3 v_world_position = worldPos.xyz / worldPos.w;
+	vec3 V = normalize(u_camera_position - v_world_position);
+	
+	// color del material
+	vec4 base_color = texture(u_gbuffer_color, v_uv);
+	vec3 ambient = base_color.rgb * u_ambient_light; //ka * Ia
+	vec3 diffuse = vec3(0.0);
+	vec3 specular = vec3(0.0);
+
+	if(base_color.a < u_alpha_cutoff)
+		discard;
+
+	vec3 L;
+	float attenuation;
+	vec3 D = normalize(u_light_direction);
+
+	attenuation = u_light_intensity;
+	L = D;
+
+	// SHADOWS
+	float shadow = 0.0;
+	vec4 light_space_pos = u_directional_light_viewprojection * vec4(v_world_position, 1.0);
+
+	vec3 proj_coords = light_space_pos.xyz / light_space_pos.w;
+	proj_coords = proj_coords * 0.5 + 0.5;
+
+	float closest_depth = texture(u_directional_shadow_map, proj_coords.xy).r;
+
+	float current_depth = proj_coords.z - u_shadow_bias;
+
+	shadow = current_depth > closest_depth ? 1.0 : 0.0;
+		
+	vec3 R = reflect(-L, N);
+	float light_factor = 1.0 - shadow;
+	diffuse += base_color.rgb * max(dot(N, L), 0.0) * attenuation * u_light_color * light_factor; //kd * (Lj * N) * Li^dir
+	specular += base_color.rgb * pow(max(dot(R, V), 0.0), u_shininess) * attenuation * u_light_color * light_factor; //ks * (Rj * V)^a Li^dir(Lj)
+
+	vec3 final_color = ambient + diffuse + specular;
+	FragColor = vec4(final_color, base_color.a);
+	if(depth>=1) FragColor = base_color;
 }

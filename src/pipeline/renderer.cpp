@@ -20,6 +20,9 @@ using namespace SCN;
 //some globals
 GFX::Mesh sphere;
 
+#define RES_WIDTH 2560
+#define RES_HEIGHT 1440
+
 Renderer::Renderer(const char* shader_atlas_filename)
 {
 	render_wireframe = false;
@@ -32,9 +35,11 @@ Renderer::Renderer(const char* shader_atlas_filename)
 		exit(1);
 	GFX::checkGLErrors();
 
-	sphere.createSphere(1.0f);
+	sphere.createSphere(1.0f, 20, 20);
 	sphere.uploadToVRAM();
-	gbuffer_fbo.create(1920, 1200, 2, GL_RGBA, GL_UNSIGNED_BYTE, true);
+	gbuffer_fbo.create(RES_WIDTH, RES_HEIGHT, 2, GL_RGBA, GL_UNSIGNED_BYTE, true);
+	illumination_fbo.create(RES_WIDTH, RES_HEIGHT, 1, GL_RGBA, GL_UNSIGNED_BYTE, false);
+	
 }
 
 void Renderer::setupScene()
@@ -241,6 +246,7 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 		return da > db;}
 	);
 	updateLights();
+	
 
 	// Clear the color and the depth buffer
 	gbuffer_fbo.bind();
@@ -254,29 +260,36 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	}
 	gbuffer_fbo.unbind();
 	GFX::checkGLErrors();
-	Camera* player_cam = camera;
-
-
 	generateShadowMap(opaque);
-	player_cam->enable();
 
+	gbuffer_fbo.depth_texture->copyTo(illumination_fbo.depth_texture);
+	illumination_fbo.bind();
+	glClear(GL_COLOR_BUFFER_BIT);
+	renderAmbientAndDirectional(camera);
+	illumination_fbo.unbind();
 	glDisable(GL_DEPTH_TEST);
-	glDisable(GL_BLEND);
-	GFX::Mesh* quad = GFX::Mesh::getQuad();
-	GFX::Shader* light_pass_shader;
-	light_pass_shader = GFX::Shader::Get("deferred_light");
-	light_pass_shader->enable();
-	sendLightUniforms(light_pass_shader);
-	light_pass_shader->setUniform("u_shininess", global_shininess);
-	light_pass_shader->setUniform("u_inverse_viewprojection", camera->inverse_viewprojection_matrix);
-	light_pass_shader->setUniform("u_camera_position", camera->eye);
-	light_pass_shader->setTexture("u_gbuffer_color", gbuffer_fbo.color_textures[0], 0);
-	light_pass_shader->setTexture("u_gbuffer_normal", gbuffer_fbo.color_textures[1], 1);
-	light_pass_shader->setTexture("u_gbuffer_depth", gbuffer_fbo.depth_texture, 9);
-	quad->render(GL_TRIANGLES);
+	illumination_fbo.color_textures[0]->toViewport();
 
-	light_pass_shader->disable();
-	glEnable(GL_DEPTH_TEST);
+	//Camera* player_cam = camera;
+	//player_cam->enable();
+
+	//glDisable(GL_DEPTH_TEST);
+	//glDisable(GL_BLEND);
+	//GFX::Mesh* quad = GFX::Mesh::getQuad();
+	//GFX::Shader* light_pass_shader;
+	//light_pass_shader = GFX::Shader::Get("deferred_light");
+	//light_pass_shader->enable();
+	//sendLightUniforms(light_pass_shader);
+	//light_pass_shader->setUniform("u_shininess", global_shininess);
+	//light_pass_shader->setUniform("u_inverse_viewprojection", camera->inverse_viewprojection_matrix);
+	//light_pass_shader->setUniform("u_camera_position", camera->eye);
+	//light_pass_shader->setTexture("u_gbuffer_color", gbuffer_fbo.color_textures[0], 0);
+	//light_pass_shader->setTexture("u_gbuffer_normal", gbuffer_fbo.color_textures[1], 1);
+	//light_pass_shader->setTexture("u_gbuffer_depth", gbuffer_fbo.depth_texture, 2);
+	//quad->render(GL_TRIANGLES);
+
+	//light_pass_shader->disable();
+	//glEnable(GL_DEPTH_TEST);
 
 
 	//HERE =====================
@@ -378,7 +391,10 @@ void Renderer::updateLights() {
 	directions.clear();
 	cones.clear();
 
-	for (LightEntity* l : light_list) {
+	for (int i = 0;i < light_list.size();i++) {
+		mat4 light_model = light_list[i]->root.getGlobalMatrix();
+
+		LightEntity* l = light_list[i];
 		positions.push_back(l->root.getGlobalMatrix().getTranslation());
 		colors.push_back(l->color);
 		intensities.push_back(l->intensity);
@@ -391,11 +407,7 @@ void Renderer::updateLights() {
 		float alpha_min = l->cone_info.x * DEG2RAD;
 		float alpha_max = l->cone_info.y * DEG2RAD;
 		cones.push_back(vec2(cos(alpha_min), cos(alpha_max)));
-	}
-	for (int i = 0; i < light_list.size(); i++) {
-		LightEntity* light = light_list[i];
 
-		mat4 light_model = light->root.getGlobalMatrix();
 		vec3 light_pos = light_model.getTranslation();
 
 		light_cameras[i]->lookAt(
@@ -404,8 +416,8 @@ void Renderer::updateLights() {
 			vec3(0.0f, 1.0f, 0.0f)
 		);
 
-		if (light->light_type == SPOT) {
-			float fov = light->cone_info.y * 2.0f;
+		if (light_list[i]->light_type == SPOT) {
+			float fov = light_list[i]->cone_info.y * 2.0f;
 			light_cameras[i]->setPerspective(fov, 1.0f, 0.1f, 100.0f);
 		}
 	}
@@ -515,6 +527,7 @@ void Renderer::showUI()
 	ImGui::Checkbox("Forward Face Culling", &use_front_face_culling);
 }
 
+
 void Renderer::sendLightUniforms(GFX::Shader* shader) {
 	int num_lights = light_list.size();
 	shader->setUniform("u_num_lights", num_lights);
@@ -548,6 +561,43 @@ void Renderer::sendLightUniforms(GFX::Shader* shader) {
 		shader->setUniform("u_directional_shadow_map", shadow_fbos[dir_index]->depth_texture, 4);
 	}
 }
+
+void Renderer::renderAmbientAndDirectional(Camera* camera) {
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_BLEND);
+	GFX::Mesh* quad = GFX::Mesh::getQuad();
+	GFX::Shader* shader = GFX::Shader::Get("deferred_ambient_directional");
+	shader->enable();
+
+	shader->setTexture("u_gbuffer_color", gbuffer_fbo.color_textures[0], 0);
+	shader->setTexture("u_gbuffer_normal", gbuffer_fbo.color_textures[1], 1);
+	shader->setTexture("u_gbuffer_depth", gbuffer_fbo.depth_texture, 2);
+
+	shader->setUniform("u_ambient_light", scene->ambient_light);
+	shader->setUniform("u_inverse_viewprojection", camera->inverse_viewprojection_matrix);
+	shader->setUniform("u_camera_position", camera->eye);
+
+	shader->setUniform("u_shininess", global_shininess);
+	shader->setUniform("u_alpha_cutoff", 0.001f);
+	shader->setUniform("u_shadow_bias", shadow_bias);
+
+	int dir_index = -1;
+	for (int i = 0; i < light_list.size(); i++) {
+		if (light_list[i]->light_type == DIRECTIONAL && dir_index == -1) dir_index = i;
+	}
+
+	if (dir_index != -1 && dir_index < light_cameras.size()) {
+		shader->setUniform("u_directional_light_viewprojection", light_cameras[dir_index]->viewprojection_matrix);
+		shader->setUniform("u_directional_shadow_map", shadow_fbos[dir_index]->depth_texture, 4);
+	}
+	shader->setUniform("u_light_color", light_list[dir_index]->color);
+	shader->setUniform("u_light_intensity", light_list[dir_index]->intensity);
+	shader->setUniform("u_light_direction", directions[dir_index]);
+
+	quad->render(GL_TRIANGLES);
+	shader->disable();
+}
+
 
 #else
 void Renderer::showUI() {}
