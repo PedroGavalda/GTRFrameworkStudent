@@ -11,6 +11,8 @@ gbuffer_fill basic.vs gbuffer_fill.fs
 deferred_light quad.vs deferred_light.fs
 skybox_gbuffer basic.vs skybox_gbuffer.fs
 deferred_ambient_directional quad.vs deferred_ambient_directional.fs
+light_volume basic.vs light_volume.fs
+
 
 \perturbNormal
 
@@ -657,4 +659,93 @@ void main()
 	vec3 final_color = ambient + diffuse + specular;
 	FragColor = vec4(final_color, base_color.a);
 	if(depth>=1) FragColor = base_color;
+}
+
+\light_volume.fs
+#version 330 core
+
+uniform sampler2D u_gbuffer_color;
+uniform sampler2D u_gbuffer_normal;
+uniform sampler2D u_gbuffer_depth;
+
+uniform mat4 u_inverse_viewprojection;
+uniform vec3 u_camera_position;
+uniform vec2 u_resolution;
+
+uniform vec3 u_light_position;
+uniform vec3 u_light_color;
+uniform float u_light_intensity;
+
+uniform int u_light_type; // 1 point, 2 spot
+uniform vec3 u_light_direction;
+uniform vec2 u_cone;
+
+uniform sampler2D u_shadow_map;
+uniform mat4 u_light_viewprojection;
+
+uniform float u_shadow_bias;
+uniform float u_shininess;
+uniform float u_max_distance;
+
+out vec4 FragColor;
+
+void main() 
+{	
+    vec2 uv = gl_FragCoord.xy / u_resolution;
+    float depth = texture(u_gbuffer_depth, uv).r;
+
+	if (depth >= 1.0) discard;
+
+    vec3 N = normalize(texture(u_gbuffer_normal, uv).xyz * 2.0 - 1.0);
+
+    vec4 clipSpacePosition = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+    vec4 worldPos = u_inverse_viewprojection * clipSpacePosition;
+    vec3 v_world_position = worldPos.xyz / worldPos.w;
+
+	vec3 to_light = u_light_position - v_world_position;
+
+	if (dot(to_light, N) <= 0.0)
+		discard;
+
+    vec3 V = normalize(u_camera_position - v_world_position);
+    vec3 base_color = texture(u_gbuffer_color, uv).rgb;
+
+	float distance = length(u_light_position - v_world_position);
+	if (distance > u_max_distance)discard;   
+    distance = max(distance, 0.001);
+
+    vec3 L = normalize(u_light_position - v_world_position);;
+    vec3 D = normalize(u_light_direction);
+
+	float attenuation = u_light_intensity / (distance * distance);
+
+	// SPOT
+    if (u_light_type == 2) { 
+
+        float cos_angle = dot(normalize(L), D);
+
+		if (cos_angle < u_cone.y)
+			discard;
+
+		attenuation *= clamp((cos_angle - u_cone.y) / (u_cone.x - u_cone.y), 0.0, 1.0);
+
+        vec4 light_space_pos = u_light_viewprojection * vec4(v_world_position, 1.0);
+        vec3 proj_coords = light_space_pos.xyz / light_space_pos.w;
+        proj_coords = proj_coords * 0.5 + 0.5;
+
+        if (proj_coords.x >= 0.0 && proj_coords.x <= 1.0 &&
+            proj_coords.y >= 0.0 && proj_coords.y <= 1.0) 
+        {
+            float closest_depth = texture(u_shadow_map, proj_coords.xy).r;
+            float current_depth  = proj_coords.z - u_shadow_bias;
+            if (current_depth > closest_depth) attenuation = 0.0;
+        }
+    }
+
+
+    vec3 diffuse = base_color * max(dot(N, L), 0.0) * attenuation * u_light_color;
+    vec3 R = reflect(-L, N);
+    vec3 specular = pow(max(dot(R, V), 0.0), u_shininess) * attenuation * u_light_color;
+
+    FragColor = vec4(diffuse + specular, 1.0);
 }

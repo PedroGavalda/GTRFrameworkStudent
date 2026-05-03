@@ -90,7 +90,7 @@ namespace SCN {
 		void sendLightUniforms(GFX::Shader* shader);
 
 		void renderAmbientAndDirectional(Camera* camera);
-		void renderLightVolumes(Camera* camera);
+		void renderLightVolume(const Matrix44& model, LightEntity* light, Camera* camera, float max_dist);
 	};
 
 };
