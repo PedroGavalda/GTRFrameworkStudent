@@ -91,6 +91,7 @@ namespace SCN {
 
 		void renderAmbientAndDirectional(Camera* camera);
 		void renderLightVolume(const Matrix44& model, LightEntity* light, Camera* camera, float max_dist);
+		bool use_deferred = true;
 	};
 
 };

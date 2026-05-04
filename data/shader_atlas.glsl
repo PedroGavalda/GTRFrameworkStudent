@@ -424,10 +424,10 @@ void main() {
         discard;
 
     vec3 N = normalize(v_normal);
-    vec3 normal_pixel = texture(u_normal_map, v_uv).xyz;
-	gbuffer_normal = vec4(N * 0.5 + 0.5, 1.0);
-    vec3 map_normal = texture(u_normal_map, v_uv).xyz * 2.0 - 1.0;
-    N = perturbNormal(N, v_world_position, v_uv, map_normal);
+	vec3 normal_pixel = texture(u_normal_map, v_uv).xyz; 
+	gbuffer_normal = vec4(N * 0.5 + 0.5, 1.0); 
+	vec3 map_normal = texture(u_normal_map, v_uv).xyz * 2.0 - 1.0; 
+	N = perturbNormal(N, v_world_position, v_uv, map_normal);
 
     gbuffer_albedo = vec4(final_color.rgb, 1.0);
 
@@ -691,30 +691,26 @@ out vec4 FragColor;
 
 void main() 
 {	
-    vec2 uv = gl_FragCoord.xy / u_resolution;
-    float depth = texture(u_gbuffer_depth, uv).r;
+	vec2 uv = gl_FragCoord.xy / u_resolution;
 
-	if (depth >= 1.0) discard;
+	// G-Buffer
+	vec3 base_color = texture(u_gbuffer_color, uv).rgb;
+	vec3 normal = texture(u_gbuffer_normal, uv).xyz;
+	normal = normalize(normal * 2.0 - 1.0); // Asumiendo que guardaste la normal en [0, 1]
+	float depth = texture(u_gbuffer_depth, uv).r;
 
-    vec3 N = normalize(texture(u_gbuffer_normal, uv).xyz * 2.0 - 1.0);
+	// posiciones
+	vec4 screen_pos = vec4(uv.x * 2.0 - 1.0, uv.y * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+	vec4 proj_world_pos = u_inverse_viewprojection * screen_pos;
+	vec3 pixel_world_pos = proj_world_pos.xyz / proj_world_pos.w;
 
-    vec4 clipSpacePosition = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
-    vec4 worldPos = u_inverse_viewprojection * clipSpacePosition;
-    vec3 v_world_position = worldPos.xyz / worldPos.w;
+	// luz
+	vec3 V = normalize(u_camera_position - pixel_world_pos);
+	float distance = length(u_light_position - pixel_world_pos);
 
-	vec3 to_light = u_light_position - v_world_position;
+	if (distance > u_max_distance) discard;
 
-	if (dot(to_light, N) <= 0.0)
-		discard;
-
-    vec3 V = normalize(u_camera_position - v_world_position);
-    vec3 base_color = texture(u_gbuffer_color, uv).rgb;
-
-	float distance = length(u_light_position - v_world_position);
-	if (distance > u_max_distance)discard;   
-    distance = max(distance, 0.001);
-
-    vec3 L = normalize(u_light_position - v_world_position);;
+    vec3 L = normalize(u_light_position - pixel_world_pos);
     vec3 D = normalize(u_light_direction);
 
 	float attenuation = u_light_intensity / (distance * distance);
@@ -729,7 +725,7 @@ void main()
 
 		attenuation *= clamp((cos_angle - u_cone.y) / (u_cone.x - u_cone.y), 0.0, 1.0);
 
-        vec4 light_space_pos = u_light_viewprojection * vec4(v_world_position, 1.0);
+        vec4 light_space_pos = u_light_viewprojection * vec4(pixel_world_pos, 1.0);
         vec3 proj_coords = light_space_pos.xyz / light_space_pos.w;
         proj_coords = proj_coords * 0.5 + 0.5;
 
@@ -742,10 +738,9 @@ void main()
         }
     }
 
-
-    vec3 diffuse = base_color * max(dot(N, L), 0.0) * attenuation * u_light_color;
-    vec3 R = reflect(-L, N);
-    vec3 specular = pow(max(dot(R, V), 0.0), u_shininess) * attenuation * u_light_color;
+    vec3 diffuse = base_color * max(dot(normal, L), 0.0) * attenuation * u_light_color;
+    vec3 R = reflect(-L, normal);
+    vec3 specular = base_color * pow(max(dot(R, V), 0.0), u_shininess) * attenuation * u_light_color;
 
     FragColor = vec4(diffuse + specular, 1.0);
 }

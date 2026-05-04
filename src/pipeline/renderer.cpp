@@ -227,6 +227,7 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 
 	std::vector<sRenderable*> opaque;
 	std::vector<sRenderable*> transparent;
+
 	for (auto& r : render_list) {
 		if (!r.material) continue;
 		if (r.material->alpha_mode == BLEND)
@@ -245,10 +246,42 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 		float db = (b->model.getTranslation() - camera->eye).length();
 		return da > db;}
 	);
+
 	updateLights();
 	
+	// FORWARD
+	if (!use_deferred)
+	{
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	// Clear the color and the depth buffer
+		if (skybox_cubemap)
+			renderSkybox(skybox_cubemap);
+
+		generateShadowMap(opaque);
+
+		for (auto* r : opaque) {
+			if (is_in_frustum(r, camera)) {
+				renderMeshWithMaterial(r->model, r->mesh, r->material, "phong");
+			}
+		}
+
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glDepthMask(GL_FALSE);
+
+		for (auto* r : transparent) {
+			if (is_in_frustum(r, camera)) {
+				renderMeshWithMaterial(r->model, r->mesh, r->material, "phong");
+			}
+		}
+
+		glDepthMask(GL_TRUE);
+		glDisable(GL_BLEND);
+
+		return;
+	}
+
+	// DEFERRED
 	gbuffer_fbo.bind();
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	if (skybox_cubemap)
@@ -277,8 +310,8 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 
 	glDisable(GL_DEPTH_TEST);
 	glDepthMask(GL_FALSE);
-	glDepthFunc(GL_GREATER);
 
+	glDepthFunc(GL_GREATER);
 	glEnable(GL_CULL_FACE);
 	glCullFace(GL_FRONT);
 
@@ -352,12 +385,19 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	//		renderMeshWithMaterial(r->model, r->mesh, r->material, "phong");
 	//	}
 	//}
-	//for (auto* r : transparent) {
-	//	if (is_in_frustum(r, camera)) {
-	//		renderMeshWithMaterial(r->model, r->mesh, r->material, "phong");
-	//	}
-	//}
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_DEPTH_TEST);
+	glDepthMask(GL_FALSE);
 
+	for (auto* r : transparent) {
+		if (is_in_frustum(r, camera)) {
+			renderMeshWithMaterial(r->model, r->mesh, r->material, "phong");
+		}
+	}
+
+	glDepthMask(GL_TRUE);
+	glDisable(GL_BLEND);
 }
 
 
@@ -576,6 +616,7 @@ void Renderer::showUI()
 	ImGui::SliderFloat("Shininess", &global_shininess, 1.0f, 100.0f);
 	ImGui::SliderFloat("Shadow Bias", &shadow_bias, 0.0001f, 0.01f, "%.4f", ImGuiSliderFlags_Logarithmic);
 	ImGui::Checkbox("Forward Face Culling", &use_front_face_culling);
+	ImGui::Checkbox("Use Deferred Rendering", &use_deferred);
 }
 
 
@@ -675,6 +716,7 @@ void Renderer::renderLightVolume(const Matrix44& model, LightEntity* light, Came
 	shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
 
 	shader->setUniform("u_light_type", (int)light->light_type);
+	shader->setUniform("u_shininess", global_shininess);
 	
 
 	float alpha_min = light->cone_info.x * DEG2RAD;
