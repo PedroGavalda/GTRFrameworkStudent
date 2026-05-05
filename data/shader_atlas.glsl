@@ -560,6 +560,7 @@ void main()
 	}
 	vec3 final_color = ambient + diffuse + specular;
 	FragColor = vec4(final_color, base_color.a);
+	if(depth == 1.0) FragColor = FragColor*4;
 }
 
 \skybox_gbuffer.fs

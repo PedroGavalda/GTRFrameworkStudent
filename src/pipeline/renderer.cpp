@@ -253,7 +253,11 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 		}
 	}
 	gbuffer_fbo.unbind();
-	GFX::checkGLErrors();
+	//gbuffer_fbo.depth_texture->copyTo(lighting_FBO.depth_texture);
+	//lighting_FBO.bind();
+	////HERE: calculate lighting
+	//lighting_FBO.unbind();
+	//lighting_FBO.color_textures[0]->toViewport();
 	Camera* player_cam = camera;
 
 

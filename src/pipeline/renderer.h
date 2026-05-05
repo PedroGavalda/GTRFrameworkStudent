@@ -52,6 +52,7 @@ namespace SCN {
 		GFX::Texture* skybox_cubemap;
 		GFX::FBO gbuffer_fbo;
 		SCN::Scene* scene;
+		GFX::FBO lighting_FBO;
 
 		//updated every frame
 		Renderer(const char* shaders_atlas_filename );
