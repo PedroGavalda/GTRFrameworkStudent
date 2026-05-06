@@ -37,9 +37,8 @@ Renderer::Renderer(const char* shader_atlas_filename)
 
 	sphere.createSphere(1.0f, 20, 20);
 	sphere.uploadToVRAM();
-	gbuffer_fbo.create(RES_WIDTH, RES_HEIGHT, 2, GL_RGBA, GL_UNSIGNED_BYTE, true);
+	gbuffer_fbo.create(RES_WIDTH, RES_HEIGHT, 3, GL_RGBA, GL_UNSIGNED_BYTE, true);
 	illumination_fbo.create(RES_WIDTH, RES_HEIGHT, 1, GL_RGBA, GL_UNSIGNED_BYTE, false);
-	
 }
 
 void Renderer::setupScene()

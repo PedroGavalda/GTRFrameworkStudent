@@ -411,9 +411,11 @@ uniform vec4 u_color;
 uniform sampler2D u_texture;
 uniform sampler2D u_normal_map;
 uniform float u_alpha_cutoff;
+uniform sampler2D u_metallic;
 
 layout(location = 0) out vec4 gbuffer_albedo;
 layout(location = 1) out vec4 gbuffer_normal;
+layout(location = 2) out vec4 gbuffer_metallic;
 
 void main() {
 
@@ -429,8 +431,9 @@ void main() {
 	vec3 map_normal = texture(u_normal_map, v_uv).xyz * 2.0 - 1.0; 
 	N = perturbNormal(N, v_world_position, v_uv, map_normal);
 
-    gbuffer_albedo = vec4(final_color.rgb, 1.0);
 
+    gbuffer_albedo = vec4(final_color.rgb, 1.0);
+	gbuffer_metallic = vec4(texture(u_metallic, v_uv).xyz, 1.0);
     gbuffer_normal = vec4(N * 0.5 + 0.5, 1.0); //Convert to space in [0,1]
 }
 
