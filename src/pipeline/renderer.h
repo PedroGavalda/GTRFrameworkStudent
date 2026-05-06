@@ -51,6 +51,7 @@ namespace SCN {
 
 		GFX::Texture* skybox_cubemap;
 		GFX::FBO gbuffer_fbo;
+		GFX::FBO illumination_fbo;
 		SCN::Scene* scene;
 		GFX::FBO lighting_FBO;
 
@@ -88,6 +89,10 @@ namespace SCN {
 		bool use_front_face_culling = true;
 
 		void sendLightUniforms(GFX::Shader* shader);
+
+		void renderAmbientAndDirectional(Camera* camera);
+		void renderLightVolume(const Matrix44& model, LightEntity* light, Camera* camera, float max_dist);
+		bool use_deferred = true;
 	};
 
 };
