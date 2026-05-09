@@ -915,9 +915,6 @@ void main()
     
     vec3 color = ambient + Lo;
 
-    // color = color / (color + vec3(1.0)); 
-    // color = pow(color, vec3(1.0/2.2)); 
-
     FragColor = vec4(color, 1.0);
 }
 
@@ -1025,9 +1022,6 @@ void main()
     vec3 ambient = base_color.rgb * u_ambient_light * ao;
 
     vec3 final_color = ambient + direct;
-
-    final_color = final_color / (final_color + vec3(1.0));
-    final_color = pow(final_color, vec3(1.0/2.2));
 
     FragColor = vec4(final_color, base_color.a);
     if(depth >= 1.0) FragColor = base_color;
