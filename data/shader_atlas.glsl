@@ -749,12 +749,38 @@ void main()
     FragColor = vec4(diffuse + specular, 1.0);
 }
 
+\pbr_functions
+
+#define PI 3.14159265359
+
+float DistributionGGX(vec3 N, vec3 H, float roughness) {
+    float a2 = pow(roughness, 4.0);
+    float NdotH = max(dot(N, H), 0.0);
+    float denom = (NdotH * NdotH * (a2 - 1.0) + 1.0);
+	float divisor = max(PI * denom * denom, 0.0001);
+    return a2 / divisor;
+}
+
+float GeometrySchlickGGX(float NdotV, float roughness) {
+    float k = pow(roughness, 2.0) / 2.0;
+	float divisor = max(NdotV * (1.0 - k) + k, 0.0001);
+    return NdotV / divisor;
+}
+
+float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
+    return GeometrySchlickGGX(max(dot(N, V), 0.0), roughness) * GeometrySchlickGGX(max(dot(N, L), 0.0), roughness);
+}
+
+vec3 fresnelSchlick(float cosTheta, vec3 F0) {
+    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
 \pbr.fs
 #version 330 core
 #include "perturbNormal"
+#include "pbr_functions"
 
 #define MAX_LIGHTS 8
-#define PI 3.14159265359
 
 in vec3 v_world_position;
 in vec3 v_normal;
@@ -784,28 +810,6 @@ uniform mat4 u_directional_light_viewprojection;
 uniform float u_shadow_bias;
 
 out vec4 FragColor;
-
-float DistributionGGX(vec3 N, vec3 H, float roughness) {
-    float a2 = pow(roughness, 4.0);
-    float NdotH = max(dot(N, H), 0.0);
-    float denom = (NdotH * NdotH * (a2 - 1.0) + 1.0);
-	float divisor = max(PI * denom * denom, 0.0001);
-    return a2 / divisor;
-}
-
-float GeometrySchlickGGX(float NdotV, float roughness) {
-    float k = pow(roughness, 2.0) / 2.0;
-	float divisor = max(NdotV * (1.0 - k) + k, 0.0001);
-    return NdotV / divisor;
-}
-
-float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
-    return GeometrySchlickGGX(max(dot(N, V), 0.0), roughness) * GeometrySchlickGGX(max(dot(N, L), 0.0), roughness);
-}
-
-vec3 fresnelSchlick(float cosTheta, vec3 F0) {
-    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
-}
 
 void main() 
 {
