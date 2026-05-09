@@ -13,6 +13,10 @@ skybox_gbuffer basic.vs skybox_gbuffer.fs
 deferred_ambient_directional quad.vs deferred_ambient_directional.fs
 light_volume basic.vs light_volume.fs
 pbr basic.vs pbr.fs
+skybox_gbuffer_pbr basic.vs skybox_gbuffer_pbr.fs
+deferred_ambient_directional_pbr quad.vs deferred_ambient_directional_pbr.fs
+light_volume_pbr basic.vs light_volume_pbr.fs
+
 
 
 \perturbNormal
@@ -700,7 +704,7 @@ void main()
 	// G-Buffer
 	vec3 base_color = texture(u_gbuffer_color, uv).rgb;
 	vec3 normal = texture(u_gbuffer_normal, uv).xyz;
-	normal = normalize(normal * 2.0 - 1.0); // Asumiendo que guardaste la normal en [0, 1]
+	normal = normalize(normal * 2.0 - 1.0);
 	float depth = texture(u_gbuffer_depth, uv).r;
 
 	// posiciones
@@ -915,4 +919,218 @@ void main()
     // color = pow(color, vec3(1.0/2.2)); 
 
     FragColor = vec4(color, 1.0);
+}
+
+\skybox_gbuffer_pbr.fs
+
+#version 330 core
+
+in vec3 v_world_position;
+
+uniform samplerCube u_texture;
+uniform vec3 u_camera_position;
+
+layout(location = 0) out vec4 gbuffer_albedo;
+layout(location = 1) out vec4 gbuffer_normal;
+layout(location = 2) out vec4 gbuffer_orm;
+
+void main()
+{
+	vec3 E = v_world_position - u_camera_position;
+	vec4 color = texture( u_texture, E );
+	gbuffer_normal = vec4(1,1,1,1);
+	gbuffer_albedo = color;
+	gbuffer_orm = vec4(1.0, 1.0, 0.0, 1.0);
+}
+
+\deferred_ambient_directional_pbr.fs
+#version 330 core
+#include "pbr_functions"
+
+in vec2 v_uv;
+
+uniform sampler2D u_gbuffer_color;
+uniform sampler2D u_gbuffer_normal;
+uniform sampler2D u_gbuffer_depth;
+uniform sampler2D u_gbuffer_orm;
+
+uniform vec3 u_ambient_light;
+uniform mat4 u_inverse_viewprojection;
+uniform vec3 u_camera_position;
+
+uniform float u_alpha_cutoff;
+uniform float u_shadow_bias;
+
+uniform sampler2D u_directional_shadow_map;
+uniform mat4 u_directional_light_viewprojection;
+
+uniform vec3 u_light_color;
+uniform float u_light_intensity;
+
+uniform vec3 u_light_direction;
+
+out vec4 FragColor;
+
+void main() 
+{
+	float depth = texture(u_gbuffer_depth, v_uv).r;
+	vec4 base_color = texture(u_gbuffer_color, v_uv);
+
+	if(base_color.a < u_alpha_cutoff)
+		discard;
+	
+	vec3 N = texture(u_gbuffer_normal, v_uv).xyz * 2.0 - 1.0;
+	N = normalize(N);
+	vec3 orm = texture(u_gbuffer_orm, v_uv).rgb;
+    float ao = orm.r;
+    float roughness = orm.g;
+    float metallic = orm.b;
+
+	vec4 clipSpacePosition = vec4(v_uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+    vec4 worldPos = u_inverse_viewprojection * clipSpacePosition;
+	vec3 v_world_position = worldPos.xyz / worldPos.w;
+	vec3 V = normalize(u_camera_position - v_world_position);
+	vec3 L = normalize(u_light_direction);
+    vec3 H = normalize(V + L);
+	vec3 F0 = mix(vec3(0.04), base_color.rgb, metallic);
+
+	// SHADOWS
+	float shadow = 0.0;
+	vec4 light_space_pos = u_directional_light_viewprojection * vec4(v_world_position, 1.0);
+
+	vec3 proj_coords = light_space_pos.xyz / light_space_pos.w;
+	proj_coords = proj_coords * 0.5 + 0.5;
+
+	float closest_depth = texture(u_directional_shadow_map, proj_coords.xy).r;
+
+	float current_depth = proj_coords.z - u_shadow_bias;
+
+	shadow = current_depth > closest_depth ? 1.0 : 0.0;
+		
+	float NdotL = max(dot(N, L), 0.0);
+    float NdotV = max(dot(N, V), 0.0);
+
+    float Dist = DistributionGGX(N, H, roughness);
+    float G = GeometrySmith(N, V, L, roughness);
+    vec3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+
+    vec3 spec_num = Dist * G * F;
+    float spec_den = 4.0 * NdotV * NdotL + 0.0001;
+    vec3 specular = spec_num / spec_den;
+
+    vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
+    
+    vec3 diffuse = (kD * base_color.rgb / PI);
+    vec3 direct = (diffuse + specular) * u_light_color * u_light_intensity * NdotL * (1.0 - shadow);
+    vec3 ambient = base_color.rgb * u_ambient_light * ao;
+
+    vec3 final_color = ambient + direct;
+
+    final_color = final_color / (final_color + vec3(1.0));
+    final_color = pow(final_color, vec3(1.0/2.2));
+
+    FragColor = vec4(final_color, base_color.a);
+    if(depth >= 1.0) FragColor = base_color;
+}
+
+\light_volume_pbr.fs
+#version 330 core
+#include "pbr_functions"
+
+uniform sampler2D u_gbuffer_color;
+uniform sampler2D u_gbuffer_normal;
+uniform sampler2D u_gbuffer_depth;
+uniform sampler2D u_gbuffer_orm;
+
+uniform mat4 u_inverse_viewprojection;
+uniform vec3 u_camera_position;
+uniform vec2 u_resolution;
+
+uniform vec3 u_light_position;
+uniform vec3 u_light_color;
+uniform float u_light_intensity;
+
+uniform int u_light_type; // 1 point, 2 spot
+uniform vec3 u_light_direction;
+uniform vec2 u_cone;
+
+uniform sampler2D u_shadow_map;
+uniform mat4 u_light_viewprojection;
+
+uniform float u_shadow_bias;
+uniform float u_max_distance;
+
+out vec4 FragColor;
+
+void main() 
+{	
+	vec2 uv = gl_FragCoord.xy / u_resolution;
+	float depth = texture(u_gbuffer_depth, uv).r;
+
+    if (depth >= 1.0) discard;
+
+	// G-Buffer
+	vec3 base_color = texture(u_gbuffer_color, uv).rgb;
+	vec3 N = normalize(texture(u_gbuffer_normal, uv).xyz * 2.0 - 1.0);
+    vec3 orm = texture(u_gbuffer_orm, uv).rgb;
+    float roughness = orm.g;
+    float metallic = orm.b;
+
+	// posiciones
+	vec4 screen_pos = vec4(uv.x * 2.0 - 1.0, uv.y * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+	vec4 proj_world_pos = u_inverse_viewprojection * screen_pos;
+	vec3 pixel_world_pos = proj_world_pos.xyz / proj_world_pos.w;
+
+	// luz
+	vec3 V = normalize(u_camera_position - pixel_world_pos);
+	float distance = length(u_light_position - pixel_world_pos);
+
+	if (distance > u_max_distance) discard;
+
+    vec3 L = normalize(u_light_position - pixel_world_pos);
+	vec3 H = normalize(V + L);
+	vec3 F0 = mix(vec3(0.04), base_color, metallic);
+
+	float attenuation = u_light_intensity / max(distance * distance, 0.0001);
+
+	// SPOT
+    if (u_light_type == 2) { 
+		vec3 D = normalize(u_light_direction);
+        float cos_angle = dot(normalize(L), D);
+
+		if (cos_angle < u_cone.y)
+			discard;
+
+		attenuation *= clamp((cos_angle - u_cone.y) / (u_cone.x - u_cone.y), 0.0, 1.0);
+
+        vec4 light_space_pos = u_light_viewprojection * vec4(pixel_world_pos, 1.0);
+        vec3 proj_coords = light_space_pos.xyz / light_space_pos.w;
+        proj_coords = proj_coords * 0.5 + 0.5;
+
+        if (proj_coords.x >= 0.0 && proj_coords.x <= 1.0 &&
+            proj_coords.y >= 0.0 && proj_coords.y <= 1.0) 
+        {
+            float closest_depth = texture(u_shadow_map, proj_coords.xy).r;
+            float current_depth  = proj_coords.z - u_shadow_bias;
+            if (current_depth > closest_depth) attenuation = 0.0;
+        }
+    }
+
+    float NdotL = max(dot(N, L), 0.0);
+    float NdotV = max(dot(N, V), 0.0);
+
+    float Dist = DistributionGGX(N, H, roughness);
+    float G = GeometrySmith(N, V, L, roughness);
+    vec3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+
+    vec3 spec_num = Dist * G * F;
+    float spec_den = 4.0 * NdotV * NdotL + 0.0001;
+    vec3 specular = spec_num / spec_den;
+
+    vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
+    
+    vec3 diffuse = (kD * base_color / PI);
+    vec3 result = (diffuse + specular) * u_light_color * attenuation * NdotL;
+
+    FragColor = vec4(result, 1.0);
 }

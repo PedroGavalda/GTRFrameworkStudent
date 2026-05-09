@@ -439,7 +439,7 @@ void Renderer::renderSkybox(GFX::Texture* cubemap)
 	if (render_wireframe)
 		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
-	GFX::Shader* shader = GFX::Shader::Get("skybox_gbuffer");
+	GFX::Shader* shader = GFX::Shader::Get("skybox_gbuffer_pbr");
 	if (!shader)
 		return;
 	shader->enable();
@@ -657,7 +657,7 @@ void Renderer::renderAmbientAndDirectional(Camera* camera) {
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_BLEND);
 	GFX::Mesh* quad = GFX::Mesh::getQuad();
-	GFX::Shader* shader = GFX::Shader::Get("deferred_ambient_directional");
+	GFX::Shader* shader = GFX::Shader::Get("deferred_ambient_directional_pbr");
 	shader->enable();
 
 	shader->setTexture("u_gbuffer_color", gbuffer_fbo.color_textures[0], 0);
@@ -692,7 +692,7 @@ void Renderer::renderAmbientAndDirectional(Camera* camera) {
 void Renderer::renderLightVolume(const Matrix44& model, LightEntity* light, Camera* camera, float max_dist)
 {
 
-	GFX::Shader* shader = GFX::Shader::Get("light_volume");
+	GFX::Shader* shader = GFX::Shader::Get("light_volume_pbr");
 	shader->enable();
 
 	// G-buffer
