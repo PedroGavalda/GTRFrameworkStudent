@@ -260,7 +260,7 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 
 		for (auto* r : opaque) {
 			if (is_in_frustum(r, camera)) {
-				renderMeshWithMaterial(r->model, r->mesh, r->material, "phong");
+				renderMeshWithMaterial(r->model, r->mesh, r->material, "pbr");
 			}
 		}
 
@@ -270,7 +270,7 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 
 		for (auto* r : transparent) {
 			if (is_in_frustum(r, camera)) {
-				renderMeshWithMaterial(r->model, r->mesh, r->material, "phong");
+				renderMeshWithMaterial(r->model, r->mesh, r->material, "pbr");
 			}
 		}
 
@@ -391,7 +391,7 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 
 	for (auto* r : transparent) {
 		if (is_in_frustum(r, camera)) {
-			renderMeshWithMaterial(r->model, r->mesh, r->material, "phong");
+			renderMeshWithMaterial(r->model, r->mesh, r->material, "pbr");
 		}
 	}
 
