@@ -355,6 +355,21 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	glDepthFunc(GL_LESS);
 	glDepthMask(GL_TRUE);
 	glEnable(GL_DEPTH_TEST);
+
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_DEPTH_TEST);
+	glDepthMask(GL_FALSE);
+
+	for (auto* r : transparent) {
+		if (is_in_frustum(r, camera)) {
+			renderMeshWithMaterial(r->model, r->mesh, r->material, "pbr");
+		}
+	}
+
+	glDepthMask(GL_TRUE);
+	glDisable(GL_BLEND);
+
 	illumination_fbo.unbind();
 	
 	illumination_fbo.color_textures[0]->toViewport();
@@ -390,19 +405,6 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	//		renderMeshWithMaterial(r->model, r->mesh, r->material, "phong");
 	//	}
 	//}
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glEnable(GL_DEPTH_TEST);
-	glDepthMask(GL_FALSE);
-
-	for (auto* r : transparent) {
-		if (is_in_frustum(r, camera)) {
-			renderMeshWithMaterial(r->model, r->mesh, r->material, "pbr");
-		}
-	}
-
-	glDepthMask(GL_TRUE);
-	glDisable(GL_BLEND);
 }
 
 
@@ -445,7 +447,7 @@ void Renderer::renderSkybox(GFX::Texture* cubemap)
 	if (render_wireframe)
 		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
-	GFX::Shader* shader = GFX::Shader::Get("skybox_gbuffer");
+	GFX::Shader* shader = GFX::Shader::Get("skybox_gbuffer_pbr");
 	if (!shader)
 		return;
 	shader->enable();
@@ -663,7 +665,7 @@ void Renderer::renderAmbientAndDirectional(Camera* camera) {
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_BLEND);
 	GFX::Mesh* quad = GFX::Mesh::getQuad();
-	GFX::Shader* shader = GFX::Shader::Get("deferred_ambient_directional");
+	GFX::Shader* shader = GFX::Shader::Get("deferred_ambient_directional_pbr");
 	shader->enable();
 
 	shader->setTexture("u_gbuffer_color", gbuffer_fbo.color_textures[0], 0);
@@ -698,7 +700,7 @@ void Renderer::renderAmbientAndDirectional(Camera* camera) {
 void Renderer::renderLightVolume(const Matrix44& model, LightEntity* light, Camera* camera, float max_dist)
 {
 
-	GFX::Shader* shader = GFX::Shader::Get("light_volume");
+	GFX::Shader* shader = GFX::Shader::Get("light_volume_pbr");
 	shader->enable();
 
 	// G-buffer
