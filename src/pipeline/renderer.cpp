@@ -39,6 +39,8 @@ Renderer::Renderer(const char* shader_atlas_filename)
 	sphere.uploadToVRAM();
 	gbuffer_fbo.create(RES_WIDTH, RES_HEIGHT, 3, GL_RGBA, GL_UNSIGNED_BYTE, true);
 	illumination_fbo.create(RES_WIDTH, RES_HEIGHT, 1, GL_RGBA, GL_UNSIGNED_BYTE, false);
+	ssao_fbo.create(RES_WIDTH, RES_HEIGHT, 1, GL_RGB, GL_UNSIGNED_BYTE, false);
+	ssao_samples = generateSpherePoints(64, 1.0f, false);
 }
 
 void Renderer::setupScene()
@@ -292,6 +294,10 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	}
 	gbuffer_fbo.unbind();
 	GFX::checkGLErrors();
+
+	//SSAO
+	renderSSAO(camera);
+
 	generateShadowMap(opaque);
 
 	// LIGHTS
@@ -352,7 +358,7 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	illumination_fbo.unbind();
 	
 	illumination_fbo.color_textures[0]->toViewport();
-
+	//ssao_fbo.color_textures[0]->toViewport();
 	//Camera* player_cam = camera;
 	//player_cam->enable();
 
@@ -751,6 +757,46 @@ void Renderer::renderLightVolume(const Matrix44& model, LightEntity* light, Came
 	sphere.render(GL_TRIANGLES);
 	shader->disable();
 }
+
+void Renderer::renderSSAO(Camera* camera)
+{
+	ssao_fbo.bind();
+
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	GFX::Mesh* quad = GFX::Mesh::getQuad();
+	GFX::Shader* shader = GFX::Shader::Get("ssao");
+	shader->enable();
+
+
+	//samples
+	shader->setUniform("u_sample_count", ssao_sample_count);
+	shader->setUniform("u_sample_radius", ssao_radius);
+	shader->setUniform3Array("u_sample_pos", &ssao_samples[0].x, ssao_sample_count);
+
+	//camara
+	mat4 proj = camera->projection_matrix;
+	mat4 proj_inv = proj;
+	proj_inv.inverse();
+	shader->setUniform("u_p_mat", proj);
+	shader->setUniform("u_inv_p_mat", proj_inv);
+
+	//inverse resolution
+	float inv_width = 1.0f / ssao_fbo.color_textures[0]->width;
+	float inv_height = 1.0f / ssao_fbo.color_textures[0]->height;
+
+	shader->setUniform("u_res_inv", vec2(inv_width, inv_height));
+	shader->setTexture("u_depth_tex", gbuffer_fbo.depth_texture, 0);
+	shader->setTexture("u_normal_tex", gbuffer_fbo.color_textures[1], 1);
+	shader->setUniform("u_v_mat", camera->view_matrix);
+
+
+	quad->render(GL_TRIANGLES);
+	shader->disable();
+
+	ssao_fbo.unbind();
+}
+
 
 #else
 void Renderer::showUI() {}
