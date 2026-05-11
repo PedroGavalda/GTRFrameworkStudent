@@ -16,6 +16,7 @@ pbr basic.vs pbr.fs
 skybox_gbuffer_pbr basic.vs skybox_gbuffer_pbr.fs
 deferred_ambient_directional_pbr quad.vs deferred_ambient_directional_pbr.fs
 light_volume_pbr basic.vs light_volume_pbr.fs
+ssao quad.vs ssao.fs
 
 
 
@@ -1127,4 +1128,70 @@ void main()
     vec3 result = (diffuse + specular) * u_light_color * attenuation * NdotL;
 
     FragColor = vec4(result, 1.0);
+}
+
+\ssao.fs
+#version 330 core
+
+in vec2 v_uv;
+
+out vec4 FragColor;
+
+uniform vec3 u_sample_pos[64];
+
+uniform int u_sample_count;
+uniform float u_sample_radius;
+
+uniform mat4 u_p_mat;
+uniform mat4 u_inv_p_mat;
+uniform mat4 u_v_mat;
+
+uniform vec2 u_res_inv;
+
+uniform sampler2D u_depth_tex;
+uniform sampler2D u_normal_tex;
+void main()
+{
+    vec2 uv = v_uv + 0.5 * u_res_inv;
+
+    float depth = texture(u_depth_tex, uv).r;
+
+    if(depth >= 1.0)
+    {
+        FragColor = vec4(1.0);
+        return;
+    }
+
+    vec4 clip_coords = vec4(uv, depth, 1.0);
+    clip_coords.xyz = clip_coords.xyz * 2.0 - 1.0;
+
+    vec4 view_sample_origin = u_inv_p_mat * clip_coords;
+    view_sample_origin /= view_sample_origin.w;
+
+    float ao_term = 0.0;
+
+    for(int i = 0; i < u_sample_count; i++)
+    {
+        vec3 view_sample = u_sample_pos[i];
+
+        view_sample *= u_sample_radius;
+
+        view_sample += view_sample_origin.xyz;
+
+        vec4 proj_sample = u_p_mat * vec4(view_sample, 1.0);
+
+        proj_sample /= proj_sample.w;
+
+        vec2 sample_uv = proj_sample.xy * 0.5 + 0.5;
+
+        float sample_depth = texture(u_depth_tex, sample_uv).r;
+
+        float sample_depth_proj = proj_sample.z * 0.5 + 0.5;
+
+        if(sample_depth >= sample_depth_proj)
+            ao_term += 1.0;
+    }
+
+    ao_term /= float(u_sample_count);
+    FragColor = vec4(vec3(ao_term), 1.0);
 }
