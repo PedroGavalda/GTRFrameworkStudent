@@ -417,6 +417,7 @@ void main()
 
 #version 330 core
 #include "perturbNormal"
+#include "gamma_functions"
 
 in vec3 v_position;
 in vec3 v_world_position;
@@ -436,7 +437,10 @@ layout(location = 2) out vec4 gbuffer_metallic;
 void main() {
 
     vec4 tex_color = texture(u_texture, v_uv);
-    vec4 final_color = u_color * tex_color;
+	tex_color.rgb = gammaToLinear(tex_color.rgb);
+	vec4 gamma_color = u_color;
+	gamma_color.rgb = gammaToLinear(u_color.rgb);
+    vec4 final_color = gamma_color * tex_color;
 
     if(final_color.a < u_alpha_cutoff)
         discard;
@@ -447,7 +451,7 @@ void main() {
 	vec3 map_normal = texture(u_normal_map, v_uv).xyz * 2.0 - 1.0; 
 	N = perturbNormal(N, v_world_position, v_uv, map_normal);
 
-
+	final_color.rgb = linearToGamma(final_color.rgb);
     gbuffer_albedo = vec4(final_color.rgb, 1.0);
 	gbuffer_metallic = vec4(texture(u_metallic, v_uv).xyz, 1.0);
     gbuffer_normal = vec4(N * 0.5 + 0.5, 1.0); //Convert to space in [0,1]
@@ -931,6 +935,8 @@ void main()
     FragColor = vec4(color, 0.0);
 }
 
+//JORDIANDREU
+
 \skybox_gbuffer_pbr.fs
 
 #version 330 core
@@ -956,6 +962,7 @@ void main()
 \deferred_ambient_directional_pbr.fs
 #version 330 core
 #include "pbr_functions"
+#include "gamma_functions"
 
 in vec2 v_uv;
 
@@ -985,6 +992,7 @@ void main()
 {
 	float depth = texture(u_gbuffer_depth, v_uv).r;
 	vec4 base_color = texture(u_gbuffer_color, v_uv);
+	base_color.rgb = gammaToLinear(base_color.rgb);
 
 	if(base_color.a < u_alpha_cutoff)
 		discard;
@@ -1031,10 +1039,11 @@ void main()
     vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
     
     vec3 diffuse = (kD * base_color.rgb / PI);
-    vec3 direct = (diffuse + specular) * u_light_color * u_light_intensity * NdotL * (1.0 - shadow);
-    vec3 ambient = base_color.rgb * u_ambient_light * ao;
+    vec3 direct = (diffuse + specular) * gammaToLinear(u_light_color) * u_light_intensity * NdotL * (1.0 - shadow);
+    vec3 ambient = base_color.rgb * gammaToLinear(u_ambient_light) * ao;
 
     vec3 final_color = ambient + direct;
+	final_color = linearToGamma(final_color);
 
     FragColor = vec4(final_color, base_color.a);
     if(depth >= 1.0) FragColor = base_color;
@@ -1043,6 +1052,7 @@ void main()
 \light_volume_pbr.fs
 #version 330 core
 #include "pbr_functions"
+#include "gamma_functions"
 
 uniform sampler2D u_gbuffer_color;
 uniform sampler2D u_gbuffer_normal;
@@ -1078,6 +1088,7 @@ void main()
 
 	// G-Buffer
 	vec3 base_color = texture(u_gbuffer_color, uv).rgb;
+	base_color = gammaToLinear(base_color);
 	vec3 N = normalize(texture(u_gbuffer_normal, uv).xyz * 2.0 - 1.0);
     vec3 orm = texture(u_gbuffer_orm, uv).rgb;
     float roughness = orm.g;
@@ -1137,8 +1148,9 @@ void main()
     vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
     
     vec3 diffuse = (kD * base_color / PI);
-    vec3 result = (diffuse + specular) * u_light_color * attenuation * NdotL;
+    vec3 result = (diffuse + specular) * gammaToLinear(u_light_color) * attenuation * NdotL;
 
+	result = linearToGamma(result);
     FragColor = vec4(result, 1.0);
 }
 
