@@ -916,7 +916,7 @@ void main()
     
     vec3 color = ambient + Lo;
 
-    FragColor = vec4(color, 1.0);
+    FragColor = vec4(color, 0.0);
 }
 
 \skybox_gbuffer_pbr.fs

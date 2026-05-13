@@ -255,21 +255,21 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	{
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		if (skybox_cubemap)
-			renderSkybox(skybox_cubemap);
-
 		generateShadowMap(opaque);
 
+		if (skybox_cubemap)
+			renderSkybox(skybox_cubemap);
+		
 		for (auto* r : opaque) {
 			if (is_in_frustum(r, camera)) {
 				renderMeshWithMaterial(r->model, r->mesh, r->material, "pbr");
 			}
 		}
-
+		
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		glDepthMask(GL_FALSE);
-
+		
 		for (auto* r : transparent) {
 			if (is_in_frustum(r, camera)) {
 				renderMeshWithMaterial(r->model, r->mesh, r->material, "pbr");

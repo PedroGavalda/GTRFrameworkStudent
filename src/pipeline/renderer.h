@@ -26,7 +26,6 @@ namespace GFX {
 	class FBO;
 }
 
-
 namespace SCN {
 
 	class Prefab;
