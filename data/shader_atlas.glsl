@@ -19,6 +19,16 @@ light_volume_pbr basic.vs light_volume_pbr.fs
 ssao quad.vs ssao.fs
 
 
+\gamma_functions
+
+vec3 gammaToLinear(vec3 v) {
+	return pow(v, vec3(2.2));
+}
+
+vec3 linearToGamma(vec3 v) {
+	return pow(v, vec3(1.0/2.2));
+}
+
 
 \perturbNormal
 
@@ -784,6 +794,7 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0) {
 #version 330 core
 #include "perturbNormal"
 #include "pbr_functions"
+#include "gamma_functions"
 
 #define MAX_LIGHTS 8
 
@@ -825,9 +836,10 @@ void main()
 	
 	// color del material
 	vec4 tex_color = texture(u_texture, v_uv);
+	tex_color.rgb = gammaToLinear(tex_color.rgb);
     if((u_color.a * tex_color.a) < u_alpha_cutoff) discard;
 
-    vec3 albedo = tex_color.rgb * u_color.rgb;
+    vec3 albedo = tex_color.rgb * gammaToLinear(u_color.rgb);
     vec3 orm = texture(u_metallic_roughness, v_uv).rgb;
     float ao = orm.r;
     float roughness = orm.g;
@@ -910,19 +922,19 @@ void main()
 
         vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
 
-        Lo += (kD * albedo / PI + specular) * u_light_color[i] * attenuation * NdotL * (1.0 - shadow);
+        Lo += (kD * albedo / PI + specular) * gammaToLinear(u_light_color[i]) * attenuation * NdotL * (1.0 - shadow);
 	}
-	vec3 ambient = u_ambient_light * albedo * ao;
+	vec3 ambient = gammaToLinear(u_ambient_light) * albedo * ao;
     
     vec3 color = ambient + Lo;
-
+	color = linearToGamma(color);
     FragColor = vec4(color, 0.0);
 }
 
 \skybox_gbuffer_pbr.fs
 
 #version 330 core
-
+ #include "gamma_functions"
 in vec3 v_world_position;
 
 uniform samplerCube u_texture;
