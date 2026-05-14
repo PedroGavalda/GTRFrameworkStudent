@@ -17,6 +17,7 @@ skybox_gbuffer_pbr basic.vs skybox_gbuffer_pbr.fs
 deferred_ambient_directional_pbr quad.vs deferred_ambient_directional_pbr.fs
 light_volume_pbr basic.vs light_volume_pbr.fs
 ssao quad.vs ssao.fs
+tonemapper quad.vs tonemapper.fs
 
 
 \gamma_functions
@@ -1218,4 +1219,33 @@ void main()
 
     ao_term /= float(u_sample_count);
     FragColor = vec4(vec3(ao_term), 1.0);
+}
+
+\tonemapper.fs
+#version 330 core
+
+#include "pbr_functions"
+
+in vec2 v_uv;
+
+uniform float u_scale;
+uniform float u_average_lum;
+uniform float u_lumwhite2;
+uniform float u_igamma;
+uniform sampler2D u_texture;
+
+out vec4 FragColor;
+
+void main(){
+	vec4 color = texture2D( u_texture, v_uv );
+	vec3 rgb = color.xyz;
+
+	float lum = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
+	float L = (u_scale / u_average_lum);
+	float Ld = (L*(1.0 + L / u_lumwhite2)) / (1.0 + L);
+
+	rgb = (rgb / lum) * Ld;
+	rgb = max(rgb, vec3(0.001));
+	rgb = pow(rgb, vec3(u_igamma));
+	FragColor = vec4(rgb, color.a);
 }
