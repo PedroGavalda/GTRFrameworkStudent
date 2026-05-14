@@ -23,6 +23,8 @@ GFX::Mesh sphere;
 #define RES_WIDTH 2560
 #define RES_HEIGHT 1440
 
+float u_igamma = (1.0f / 2.2f);
+
 Renderer::Renderer(const char* shader_atlas_filename)
 {
 	render_wireframe = false;
@@ -371,8 +373,31 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	glDisable(GL_BLEND);
 
 	illumination_fbo.unbind();
+
+	glClearColor(0, 0, 0, 1);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	// 3. Activamos el shader del tonemapper
+	GFX::Shader* tonemap_shader = GFX::Shader::Get("tonemapper");
+	tonemap_shader->enable();
+
+	// 4. PASAMOS LAS UNIFORMS
+	// La textura de entrada es el resultado del paso de iluminación
+	tonemap_shader->setUniform("u_texture", illumination_fbo.color_textures[0], 0);
+
+	// Configuramos los parámetros que pusiste en tu .fs
+	tonemap_shader->setUniform("u_scale", 1.0f);
+	tonemap_shader->setUniform("u_average_lum", 1.0f);
+	tonemap_shader->setUniform("u_lumwhite2", 1.0f);
+	tonemap_shader->setUniform("u_igamma", u_igamma);
+
+	// 5. Dibujamos el Quad que ocupa toda la pantalla
+	GFX::Mesh* quad = GFX::Mesh::getQuad();
+	quad->render(GL_TRIANGLES);
+
+	tonemap_shader->disable();
 	
-	illumination_fbo.color_textures[0]->toViewport();
+	//illumination_fbo.color_textures[0]->toViewport();
 	//ssao_fbo.color_textures[0]->toViewport();
 	//Camera* player_cam = camera;
 	//player_cam->enable();
