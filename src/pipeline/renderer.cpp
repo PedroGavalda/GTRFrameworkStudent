@@ -38,7 +38,7 @@ Renderer::Renderer(const char* shader_atlas_filename)
 	sphere.createSphere(1.0f, 20, 20);
 	sphere.uploadToVRAM();
 	gbuffer_fbo.create(RES_WIDTH, RES_HEIGHT, 3, GL_RGBA, GL_UNSIGNED_BYTE, true);
-	illumination_fbo.create(RES_WIDTH, RES_HEIGHT, 1, GL_RGBA, GL_UNSIGNED_BYTE, false);
+	illumination_fbo.create(RES_WIDTH, RES_HEIGHT, 1, GL_RGBA, GL_FLOAT, false);
 	ssao_fbo.create(RES_WIDTH, RES_HEIGHT, 1, GL_RGB, GL_UNSIGNED_BYTE, false);
 	ssao_samples = generateSpherePoints(64, 1.0f, false);
 }
