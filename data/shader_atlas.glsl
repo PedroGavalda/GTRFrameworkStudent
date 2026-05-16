@@ -579,7 +579,7 @@ void main()
 {
 	vec3 E = v_world_position - u_camera_position;
 	vec4 color = texture( u_texture, E );
-	gbuffer_normal = vec4(1,1,1,1);
+	gbuffer_normal = vec4(0,0,0,0);
 	gbuffer_albedo = color;
 }
 
