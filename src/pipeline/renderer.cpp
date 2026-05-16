@@ -23,6 +23,8 @@ GFX::Mesh sphere;
 #define RES_WIDTH 2560
 #define RES_HEIGHT 1440
 
+float u_igamma = (1.0f / 2.2f);
+
 Renderer::Renderer(const char* shader_atlas_filename)
 {
 	render_wireframe = false;
@@ -37,9 +39,10 @@ Renderer::Renderer(const char* shader_atlas_filename)
 
 	sphere.createSphere(1.0f, 20, 20);
 	sphere.uploadToVRAM();
-	gbuffer_fbo.create(RES_WIDTH, RES_HEIGHT, 2, GL_RGBA, GL_UNSIGNED_BYTE, true);
-	illumination_fbo.create(RES_WIDTH, RES_HEIGHT, 1, GL_RGBA, GL_UNSIGNED_BYTE, false);
-	
+	gbuffer_fbo.create(RES_WIDTH, RES_HEIGHT, 3, GL_RGBA, GL_UNSIGNED_BYTE, true);
+	illumination_fbo.create(RES_WIDTH, RES_HEIGHT, 1, GL_RGBA, GL_FLOAT, false);
+	ssao_fbo.create(RES_WIDTH, RES_HEIGHT, 1, GL_RGB, GL_UNSIGNED_BYTE, false);
+	ssao_samples = generateSpherePoints(64, 1.0f, false);
 }
 
 void Renderer::setupScene()
@@ -121,10 +124,10 @@ void Renderer::generateShadowMap(std::vector<sRenderable*> opaque) {
 		// Camera Setups
 		LightEntity* light = light_list[i];
 
-		mat4 light_model = light->root.getGlobalMatrix();
-		vec3 light_pos = light_model.getTranslation();
-		vec3 light_dir = normalize(light_model.frontVector());
-		light_cameras[i]->lookAt(light_pos, light_dir * vec3(0.0f, 0.0f, -1.0f), vec3(0.0f, 1.0f, 0.0f));
+		//mat4 light_model = light->root.getGlobalMatrix();
+		//vec3 light_pos = light_model.getTranslation();
+		//vec3 light_dir = normalize(light_model.frontVector());
+		//light_cameras[i]->lookAt(light_pos, light_dir * vec3(0.0f, 0.0f, -1.0f), vec3(0.0f, 1.0f, 0.0f));
 
 		//DIRECTIONAL LIGHT
 		if (light->light_type == DIRECTIONAL) {
@@ -227,6 +230,7 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 
 	std::vector<sRenderable*> opaque;
 	std::vector<sRenderable*> transparent;
+
 	for (auto& r : render_list) {
 		if (!r.material) continue;
 		if (r.material->alpha_mode == BLEND)
@@ -245,10 +249,42 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 		float db = (b->model.getTranslation() - camera->eye).length();
 		return da > db;}
 	);
+
 	updateLights();
 	
+	// FORWARD
+	if (!use_deferred)
+	{
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	// Clear the color and the depth buffer
+		generateShadowMap(opaque);
+
+		if (skybox_cubemap)
+			renderSkybox(skybox_cubemap);
+		
+		for (auto* r : opaque) {
+			if (is_in_frustum(r, camera)) {
+				renderMeshWithMaterial(r->model, r->mesh, r->material, "pbr");
+			}
+		}
+		
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glDepthMask(GL_FALSE);
+		
+		for (auto* r : transparent) {
+			if (is_in_frustum(r, camera)) {
+				renderMeshWithMaterial(r->model, r->mesh, r->material, "pbr");
+			}
+		}
+
+		glDepthMask(GL_TRUE);
+		glDisable(GL_BLEND);
+
+		return;
+	}
+
+	// DEFERRED
 	gbuffer_fbo.bind();
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	if (skybox_cubemap)
@@ -260,16 +296,109 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	}
 	gbuffer_fbo.unbind();
 	GFX::checkGLErrors();
+
+	//SSAO
+	renderSSAO(camera);
+
 	generateShadowMap(opaque);
 
+	// LIGHTS
 	gbuffer_fbo.depth_texture->copyTo(illumination_fbo.depth_texture);
+	
 	illumination_fbo.bind();
 	glClear(GL_COLOR_BUFFER_BIT);
+	
+	// Ambient + Directional
 	renderAmbientAndDirectional(camera);
-	illumination_fbo.unbind();
-	glDisable(GL_DEPTH_TEST);
-	illumination_fbo.color_textures[0]->toViewport();
+	
+	// Light Volumes
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_ONE, GL_ONE);
 
+	glDisable(GL_DEPTH_TEST);
+	glDepthMask(GL_FALSE);
+
+	glDepthFunc(GL_GREATER);
+	glEnable(GL_CULL_FACE);
+	glCullFace(GL_FRONT);
+
+	for (int i = 0; i < light_list.size(); i++) {
+		LightEntity* light = light_list[i];
+		if (light->light_type == DIRECTIONAL) continue;
+
+		vec3 pos = light->root.getGlobalMatrix().getTranslation();
+
+		float threshold = 0.1f;
+		float r = sqrtf(light->intensity / threshold);
+		if (r > light->max_distance) r = light->max_distance;
+		
+		// Frustum culling
+		bool visible = true;
+		for (int p = 0; p < 6; p++) {
+			float dist = camera->frustum[p][0] * pos.x
+				+ camera->frustum[p][1] * pos.y
+				+ camera->frustum[p][2] * pos.z
+				+ camera->frustum[p][3];
+			if (dist < -r) { visible = false; break; }
+		}
+		if (!visible) continue;
+
+		Matrix44 model;
+		model.setTranslation(pos.x, pos.y, pos.z);
+		model.scale(r, r, r);
+		renderLightVolume(model, light, camera, r);
+	}
+
+	glDisable(GL_BLEND);
+
+	glCullFace(GL_BACK);
+	glDisable(GL_CULL_FACE);
+
+	glDepthFunc(GL_LESS);
+	glDepthMask(GL_TRUE);
+	glEnable(GL_DEPTH_TEST);
+
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_DEPTH_TEST);
+	glDepthMask(GL_FALSE);
+
+	for (auto* r : transparent) {
+		if (is_in_frustum(r, camera)) {
+			renderMeshWithMaterial(r->model, r->mesh, r->material, "pbr");
+		}
+	}
+
+	glDepthMask(GL_TRUE);
+	glDisable(GL_BLEND);
+
+	illumination_fbo.unbind();
+
+	glClearColor(0, 0, 0, 1);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	// 3. Activamos el shader del tonemapper
+	GFX::Shader* tonemap_shader = GFX::Shader::Get("tonemapper");
+	tonemap_shader->enable();
+
+	// 4. PASAMOS LAS UNIFORMS
+	// La textura de entrada es el resultado del paso de iluminación
+	tonemap_shader->setUniform("u_texture", illumination_fbo.color_textures[0], 0);
+
+	// Configuramos los parámetros que pusiste en tu .fs
+	tonemap_shader->setUniform("u_scale", 1.0f);
+	tonemap_shader->setUniform("u_average_lum", 1.0f);
+	tonemap_shader->setUniform("u_lumwhite2", 1.0f);
+	tonemap_shader->setUniform("u_igamma", u_igamma);
+
+	// 5. Dibujamos el Quad que ocupa toda la pantalla
+	GFX::Mesh* quad = GFX::Mesh::getQuad();
+	quad->render(GL_TRIANGLES);
+
+	tonemap_shader->disable();
+	
+	//illumination_fbo.color_textures[0]->toViewport();
+	//ssao_fbo.color_textures[0]->toViewport();
 	//Camera* player_cam = camera;
 	//player_cam->enable();
 
@@ -301,12 +430,6 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	//		renderMeshWithMaterial(r->model, r->mesh, r->material, "phong");
 	//	}
 	//}
-	//for (auto* r : transparent) {
-	//	if (is_in_frustum(r, camera)) {
-	//		renderMeshWithMaterial(r->model, r->mesh, r->material, "phong");
-	//	}
-	//}
-
 }
 
 
@@ -349,7 +472,7 @@ void Renderer::renderSkybox(GFX::Texture* cubemap)
 	if (render_wireframe)
 		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
-	GFX::Shader* shader = GFX::Shader::Get("skybox_gbuffer");
+	GFX::Shader* shader = GFX::Shader::Get("skybox_gbuffer_pbr");
 	if (!shader)
 		return;
 	shader->enable();
@@ -412,7 +535,7 @@ void Renderer::updateLights() {
 
 		light_cameras[i]->lookAt(
 			light_pos,
-			light_pos + light_model.frontVector(),
+			(light_model * vec4(0.0f, 0.0f, -1.0f, 1.0f)).xyz(),
 			vec3(0.0f, 1.0f, 0.0f)
 		);
 
@@ -525,6 +648,7 @@ void Renderer::showUI()
 	ImGui::SliderFloat("Shininess", &global_shininess, 1.0f, 100.0f);
 	ImGui::SliderFloat("Shadow Bias", &shadow_bias, 0.0001f, 0.01f, "%.4f", ImGuiSliderFlags_Logarithmic);
 	ImGui::Checkbox("Forward Face Culling", &use_front_face_culling);
+	ImGui::Checkbox("Use Deferred Rendering", &use_deferred);
 }
 
 
@@ -566,7 +690,7 @@ void Renderer::renderAmbientAndDirectional(Camera* camera) {
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_BLEND);
 	GFX::Mesh* quad = GFX::Mesh::getQuad();
-	GFX::Shader* shader = GFX::Shader::Get("deferred_ambient_directional");
+	GFX::Shader* shader = GFX::Shader::Get("deferred_ambient_directional_pbr");
 	shader->enable();
 
 	shader->setTexture("u_gbuffer_color", gbuffer_fbo.color_textures[0], 0);
@@ -596,6 +720,108 @@ void Renderer::renderAmbientAndDirectional(Camera* camera) {
 
 	quad->render(GL_TRIANGLES);
 	shader->disable();
+}
+
+void Renderer::renderLightVolume(const Matrix44& model, LightEntity* light, Camera* camera, float max_dist)
+{
+
+	GFX::Shader* shader = GFX::Shader::Get("light_volume_pbr");
+	shader->enable();
+
+	// G-buffer
+	shader->setTexture("u_gbuffer_color", gbuffer_fbo.color_textures[0], 0);
+	shader->setTexture("u_gbuffer_normal", gbuffer_fbo.color_textures[1], 1);
+	shader->setTexture("u_gbuffer_depth", gbuffer_fbo.depth_texture, 2);
+
+	// cam
+	shader->setUniform("u_inverse_viewprojection", camera->inverse_viewprojection_matrix);
+	shader->setUniform("u_camera_position", camera->eye);
+	shader->setUniform("u_resolution", vec2(RES_WIDTH, RES_HEIGHT));
+
+	// luz
+	shader->setUniform("u_light_position", light->root.getGlobalMatrix().getTranslation());
+	shader->setUniform("u_light_color", light->color);
+	shader->setUniform("u_light_intensity", light->intensity);
+	
+	shader->setUniform("u_max_distance", max_dist);
+	shader->setUniform("u_model", model);
+	shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
+
+	shader->setUniform("u_light_type", (int)light->light_type);
+	shader->setUniform("u_shininess", global_shininess);
+	
+
+	float alpha_min = light->cone_info.x * DEG2RAD;
+	float alpha_max = light->cone_info.y * DEG2RAD;
+
+	vec2 cone = vec2(cos(alpha_min), cos(alpha_max));
+	shader->setUniform2("u_cone", cone.x, cone.y);
+
+	int light_index = -1;
+	for (int i = 0; i < light_list.size(); i++) {
+		if (light_list[i] == light) {
+			light_index = i;
+			break;
+		}
+	}
+
+	if (light->light_type == SPOT) {
+		auto dir = light->root.getGlobalMatrix().frontVector();
+		shader->setUniform3("u_light_direction", dir.x, dir.y, dir.z);
+
+		if (light_index != -1) {
+			shader->setTexture("u_shadow_map", shadow_fbos[light_index]->depth_texture, 3);
+			shader->setUniform("u_light_viewprojection", light_cameras[light_index]->viewprojection_matrix);
+		}
+	}
+	else {
+		// Point: dirección cero para evitar artefactos si el shader la usa
+		shader->setUniform3("u_light_direction", 0.0f, 0.0f, 0.0f);
+	}
+
+	shader->setUniform("u_shadow_bias", shadow_bias);
+
+	sphere.render(GL_TRIANGLES);
+	shader->disable();
+}
+
+void Renderer::renderSSAO(Camera* camera)
+{
+	ssao_fbo.bind();
+
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	GFX::Mesh* quad = GFX::Mesh::getQuad();
+	GFX::Shader* shader = GFX::Shader::Get("ssao");
+	shader->enable();
+
+
+	//samples
+	shader->setUniform("u_sample_count", ssao_sample_count);
+	shader->setUniform("u_sample_radius", ssao_radius);
+	shader->setUniform3Array("u_sample_pos", &ssao_samples[0].x, ssao_sample_count);
+
+	//camara
+	mat4 proj = camera->projection_matrix;
+	mat4 proj_inv = proj;
+	proj_inv.inverse();
+	shader->setUniform("u_p_mat", proj);
+	shader->setUniform("u_inv_p_mat", proj_inv);
+
+	//inverse resolution
+	float inv_width = 1.0f / ssao_fbo.color_textures[0]->width;
+	float inv_height = 1.0f / ssao_fbo.color_textures[0]->height;
+
+	shader->setUniform("u_res_inv", vec2(inv_width, inv_height));
+	shader->setTexture("u_depth_tex", gbuffer_fbo.depth_texture, 0);
+	shader->setTexture("u_normal_tex", gbuffer_fbo.color_textures[1], 1);
+	shader->setUniform("u_v_mat", camera->view_matrix);
+
+
+	quad->render(GL_TRIANGLES);
+	shader->disable();
+
+	ssao_fbo.unbind();
 }
 
 

@@ -103,6 +103,11 @@ void Material::bind(GFX::Shader* shader) {
 		else
 			shader->setUniform("u_texture", textures[ALBEDO].texture->getWhiteTexture(), 0);
 
+		if (textures[METALLIC_ROUGHNESS].texture)
+			shader->setUniform("u_metallic", textures[METALLIC_ROUGHNESS].texture, 2);
+		else
+			shader->setUniform("u_metallic", textures[METALLIC_ROUGHNESS].texture->getBlackTexture(), 2);
+
 		// This is used to say which is the alpha threshold to what we should not paint a pixel on the screen (to cut polygons according to texture alpha)
 		shader->setUniform("u_alpha_cutoff", alpha_mode == SCN::eAlphaMode::MASK ? alpha_cutoff : 0.001f);
 
@@ -112,7 +117,7 @@ void Material::bind(GFX::Shader* shader) {
 		if (textures[NORMALMAP].texture)
 			shader->setUniform("u_normal_map", textures[NORMALMAP].texture, 1);
 		else
-			shader->setUniform("u_normal_map", GFX::Texture::getWhiteTexture(), 1);
+			shader->setUniform("u_normal_map", GFX::Texture::getBlackTexture(), 1);
 
 	}
 }

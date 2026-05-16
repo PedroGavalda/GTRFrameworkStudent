@@ -26,7 +26,6 @@ namespace GFX {
 	class FBO;
 }
 
-
 namespace SCN {
 
 	class Prefab;
@@ -53,6 +52,8 @@ namespace SCN {
 		GFX::FBO gbuffer_fbo;
 		GFX::FBO illumination_fbo;
 		SCN::Scene* scene;
+		GFX::FBO lighting_FBO;
+		GFX::FBO ssao_fbo;
 
 		//updated every frame
 		Renderer(const char* shaders_atlas_filename );
@@ -90,7 +91,13 @@ namespace SCN {
 		void sendLightUniforms(GFX::Shader* shader);
 
 		void renderAmbientAndDirectional(Camera* camera);
-		void renderLightVolumes(Camera* camera);
+		void renderLightVolume(const Matrix44& model, LightEntity* light, Camera* camera, float max_dist);
+		bool use_deferred = true;
+
+		void renderSSAO(Camera* camera);
+		int ssao_sample_count = 32;
+		float ssao_radius = 0.01f;
+		std::vector<vec3> ssao_samples;
 	};
 
 };
