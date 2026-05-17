@@ -179,6 +179,13 @@ namespace GFX
 			bufs[0] = GL_COLOR_ATTACHMENT0_EXT;
 		}
 
+		std::vector<GLenum> draw_buffers;
+		for (int i = 0; i < num_color_textures; ++i)
+		{
+			draw_buffers.push_back(GL_COLOR_ATTACHMENT0 + i);
+		}
+		glDrawBuffers(draw_buffers.size(), &draw_buffers[0]);
+
 		glDrawBuffers(4, bufs);
 
 		checkGLErrors();

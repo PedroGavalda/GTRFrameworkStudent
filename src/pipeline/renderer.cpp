@@ -39,10 +39,10 @@ Renderer::Renderer(const char* shader_atlas_filename)
 
 	sphere.createSphere(1.0f, 20, 20);
 	sphere.uploadToVRAM();
-	gbuffer_fbo.create(RES_WIDTH, RES_HEIGHT, 3, GL_RGBA, GL_UNSIGNED_BYTE, true);
+	gbuffer_fbo.create(RES_WIDTH, RES_HEIGHT, 3, GL_RGBA, GL_FLOAT, true);
 	illumination_fbo.create(RES_WIDTH, RES_HEIGHT, 1, GL_RGBA, GL_FLOAT, false);
 	ssao_fbo.create(RES_WIDTH, RES_HEIGHT, 1, GL_RGB, GL_UNSIGNED_BYTE, false);
-	ssao_samples = generateSpherePoints(64, 1.0f, false);
+	ssao_samples = generateSpherePoints(32, 1.0f, true);
 }
 
 void Renderer::setupScene()
@@ -295,6 +295,8 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 		}
 	}
 	gbuffer_fbo.unbind();
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	
 	GFX::checkGLErrors();
 
 	//SSAO
@@ -375,7 +377,7 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	illumination_fbo.unbind();
 
 	glClearColor(0, 0, 0, 1);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glClear(GL_COLOR_BUFFER_BIT);
 
 	// 3. Activamos el shader del tonemapper
 	GFX::Shader* tonemap_shader = GFX::Shader::Get("tonemapper");
@@ -392,10 +394,16 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	tonemap_shader->setUniform("u_igamma", u_igamma);
 
 	// 5. Dibujamos el Quad que ocupa toda la pantalla
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_BLEND);
 	GFX::Mesh* quad = GFX::Mesh::getQuad();
+
 	quad->render(GL_TRIANGLES);
 
 	tonemap_shader->disable();
+	glEnable(GL_DEPTH_TEST);
+	glDepthMask(GL_TRUE);
+	glDepthFunc(GL_LESS);
 	
 	//illumination_fbo.color_textures[0]->toViewport();
 	//ssao_fbo.color_textures[0]->toViewport();
@@ -429,7 +437,10 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	//	if (is_in_frustum(r, camera)) {
 	//		renderMeshWithMaterial(r->model, r->mesh, r->material, "phong");
 	//	}
-	//}
+	//}*/
+
+	// testeo de SSAO
+	//ssao_fbo.color_textures[0]->toViewport();
 }
 
 
@@ -697,6 +708,8 @@ void Renderer::renderAmbientAndDirectional(Camera* camera) {
 	shader->setTexture("u_gbuffer_normal", gbuffer_fbo.color_textures[1], 1);
 	shader->setTexture("u_gbuffer_depth", gbuffer_fbo.depth_texture, 2);
 
+	shader->setTexture("u_ssao_tex", ssao_fbo.color_textures[0], 5);
+
 	shader->setUniform("u_ambient_light", scene->ambient_light);
 	shader->setUniform("u_inverse_viewprojection", camera->inverse_viewprojection_matrix);
 	shader->setUniform("u_camera_position", camera->eye);
@@ -789,37 +802,38 @@ void Renderer::renderSSAO(Camera* camera)
 {
 	ssao_fbo.bind();
 
+	glDisable(GL_DEPTH_TEST);
+	glDepthMask(GL_FALSE);
+	glDisable(GL_BLEND);
+
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	GFX::Mesh* quad = GFX::Mesh::getQuad();
 	GFX::Shader* shader = GFX::Shader::Get("ssao");
+
 	shader->enable();
 
-
-	//samples
 	shader->setUniform("u_sample_count", ssao_sample_count);
 	shader->setUniform("u_sample_radius", ssao_radius);
 	shader->setUniform3Array("u_sample_pos", &ssao_samples[0].x, ssao_sample_count);
+	shader->setUniform("u_view_mat", camera->view_matrix);
 
-	//camara
 	mat4 proj = camera->projection_matrix;
 	mat4 proj_inv = proj;
 	proj_inv.inverse();
+
 	shader->setUniform("u_p_mat", proj);
 	shader->setUniform("u_inv_p_mat", proj_inv);
 
-	//inverse resolution
-	float inv_width = 1.0f / ssao_fbo.color_textures[0]->width;
-	float inv_height = 1.0f / ssao_fbo.color_textures[0]->height;
-
-	shader->setUniform("u_res_inv", vec2(inv_width, inv_height));
-	shader->setTexture("u_depth_tex", gbuffer_fbo.depth_texture, 0);
+	shader->setTexture("u_depth_tex",gbuffer_fbo.depth_texture, 0);
 	shader->setTexture("u_normal_tex", gbuffer_fbo.color_textures[1], 1);
-	shader->setUniform("u_v_mat", camera->view_matrix);
-
 
 	quad->render(GL_TRIANGLES);
+
 	shader->disable();
+
+	glDepthMask(GL_TRUE);
+	glEnable(GL_DEPTH_TEST);
 
 	ssao_fbo.unbind();
 }

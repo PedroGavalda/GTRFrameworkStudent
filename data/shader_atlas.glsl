@@ -971,6 +971,8 @@ uniform sampler2D u_gbuffer_normal;
 uniform sampler2D u_gbuffer_depth;
 uniform sampler2D u_gbuffer_orm;
 
+
+
 uniform vec3 u_ambient_light;
 uniform mat4 u_inverse_viewprojection;
 uniform vec3 u_camera_position;
@@ -986,6 +988,8 @@ uniform float u_light_intensity;
 
 uniform vec3 u_light_direction;
 
+uniform sampler2D u_ssao_tex;
+
 out vec4 FragColor;
 
 void main() 
@@ -999,7 +1003,9 @@ void main()
 	vec3 N = texture(u_gbuffer_normal, v_uv).xyz * 2.0 - 1.0;
 	N = normalize(N);
 	vec3 orm = texture(u_gbuffer_orm, v_uv).rgb;
-    float ao = orm.r;
+    float material_ao = orm.r;
+	float ssao = texture(u_ssao_tex, v_uv).r;
+	float ao = material_ao * ssao;
     float roughness = orm.g;
     float metallic = orm.b;
 
@@ -1154,66 +1160,69 @@ void main()
 #version 330 core
 
 in vec2 v_uv;
-
 out vec4 FragColor;
-
-uniform vec3 u_sample_pos[64];
-
-uniform int u_sample_count;
-uniform float u_sample_radius;
-
-uniform mat4 u_p_mat;
-uniform mat4 u_inv_p_mat;
-uniform mat4 u_v_mat;
-
-uniform vec2 u_res_inv;
 
 uniform sampler2D u_depth_tex;
 uniform sampler2D u_normal_tex;
+
+uniform mat4 u_p_mat;
+uniform mat4 u_inv_p_mat;
+uniform mat4 u_view_mat;
+
+uniform vec3 u_sample_pos[32];
+uniform int u_sample_count;
+uniform float u_sample_radius;
+
 void main()
-{
-    vec2 uv = v_uv + 0.5 * u_res_inv;
+{	
+	// reconstruir posiciones
+    float depth = texture(u_depth_tex, v_uv).r;
+    vec4 clip_pos = vec4(v_uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+    vec4 view_pos = u_inv_p_mat * clip_pos;
+    view_pos /= view_pos.w;
+    vec3 origin = view_pos.xyz;
 
-    float depth = texture(u_depth_tex, uv).r;
+	// rotation matrix
+	vec3 normal = normalize(texture(u_normal_tex, v_uv).xyz * 2.0 - 1.0);
+	vec3 N = normalize(vec3(u_view_mat * vec4(normal, 0.0)));
+	vec3 v = vec3(0.0, 1.0, 0.0);
+	vec3 T = normalize(v - N * dot(v, N));
+	vec3 B = cross(N, T);
+	mat3 rotation_mat = mat3(T, B, N);
 
-    if(depth >= 1.0)
-    {
-        FragColor = vec4(1.0);
-        return;
-    }
-
-    vec4 clip_coords = vec4(uv, depth, 1.0);
-    clip_coords.xyz = clip_coords.xyz * 2.0 - 1.0;
-
-    vec4 view_sample_origin = u_inv_p_mat * clip_coords;
-    view_sample_origin /= view_sample_origin.w;
-
-    float ao_term = 0.0;
+	// occlusion
+    float occlusion = 0.0;
+    float bias = 0.01;
 
     for(int i = 0; i < u_sample_count; i++)
-    {
-        vec3 view_sample = u_sample_pos[i];
+	{
+		vec3 view_sample = rotation_mat * u_sample_pos[i];
+		view_sample *= u_sample_radius;
 
-        view_sample *= u_sample_radius;
+		vec3 sample_pos = origin + view_sample;
 
-        view_sample += view_sample_origin.xyz;
+		vec4 offset = u_p_mat * vec4(sample_pos, 1.0);
+		offset /= offset.w;
 
-        vec4 proj_sample = u_p_mat * vec4(view_sample, 1.0);
+		vec2 sample_uv = offset.xy * 0.5 + 0.5;
 
-        proj_sample /= proj_sample.w;
+		if(sample_uv.x < 0.0 || sample_uv.x > 1.0 || sample_uv.y < 0.0 || sample_uv.y > 1.0)
+			continue;
 
-        vec2 sample_uv = proj_sample.xy * 0.5 + 0.5;
+		float sample_depth = texture(u_depth_tex, sample_uv).r;
+		vec4 sample_view_pos = u_inv_p_mat * vec4(sample_uv * 2.0 - 1.0, sample_depth * 2.0 - 1.0, 1.0);
+		sample_view_pos /= sample_view_pos.w;
+		float sample_depth_view = sample_view_pos.z;
 
-        float sample_depth = texture(u_depth_tex, sample_uv).r;
+		float range_check = abs(origin.z - sample_depth_view) < u_sample_radius ? 1.0 : 0.0;
 
-        float sample_depth_proj = proj_sample.z * 0.5 + 0.5;
+		if(sample_depth_view <= sample_pos.z + bias) 
+			occlusion += range_check;
+	}
 
-        if(sample_depth >= sample_depth_proj)
-            ao_term += 1.0;
-    }
+    occlusion = (occlusion / float(u_sample_count));
 
-    ao_term /= float(u_sample_count);
-    FragColor = vec4(vec3(ao_term), 1.0);
+    FragColor = vec4(vec3(occlusion), 1.0);
 }
 
 \tonemapper.fs
