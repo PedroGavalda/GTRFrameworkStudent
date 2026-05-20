@@ -137,7 +137,6 @@ void Renderer::generateShadowMap(std::vector<sRenderable*> opaque) {
 
 		//SPOTLIGHT
 		else if (light->light_type == SPOT) {
-			//codigo del sushant que se tiene que cambiar
 			float fov = (light->cone_info.y * 2.0f);
 			light_cameras[i]->setPerspective(fov, 1.0f, light->near_distance, light->max_distance);
 		}
@@ -379,21 +378,16 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	glClearColor(0, 0, 0, 1);
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	// 3. Activamos el shader del tonemapper
 	GFX::Shader* tonemap_shader = GFX::Shader::Get("tonemapper");
 	tonemap_shader->enable();
 
-	// 4. PASAMOS LAS UNIFORMS
-	// La textura de entrada es el resultado del paso de iluminación
 	tonemap_shader->setUniform("u_texture", illumination_fbo.color_textures[0], 0);
 
-	// Configuramos los parámetros que pusiste en tu .fs
 	tonemap_shader->setUniform("u_scale", 1.0f);
 	tonemap_shader->setUniform("u_average_lum", 1.0f);
 	tonemap_shader->setUniform("u_lumwhite2", 1.0f);
 	tonemap_shader->setUniform("u_igamma", u_igamma);
 
-	// 5. Dibujamos el Quad que ocupa toda la pantalla
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_BLEND);
 	GFX::Mesh* quad = GFX::Mesh::getQuad();
