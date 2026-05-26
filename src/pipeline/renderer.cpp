@@ -43,6 +43,7 @@ Renderer::Renderer(const char* shader_atlas_filename)
 	illumination_fbo.create(RES_WIDTH, RES_HEIGHT, 1, GL_RGBA, GL_FLOAT, false);
 	ssao_fbo.create(RES_WIDTH, RES_HEIGHT, 1, GL_RGB, GL_UNSIGNED_BYTE, false);
 	ssao_samples = generateSpherePoints(32, 1.0f, true);
+	godrays_fbo.create(RES_WIDTH, RES_HEIGHT, 1, GL_RGBA, GL_FLOAT, false);
 }
 
 void Renderer::setupScene()
@@ -374,6 +375,20 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	glDisable(GL_BLEND);
 
 	illumination_fbo.unbind();
+
+	//GODRAYS
+	godrays_fbo.bind();
+
+	glEnable(GL_DEPTH_TEST);
+	glDepthMask(GL_TRUE);
+	glDisable(GL_BLEND);
+
+	glClearColor(0, 0, 0, 1);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	//codigo de shader
+
+	godrays_fbo.unbind();
 
 	glClearColor(0, 0, 0, 1);
 	glClear(GL_COLOR_BUFFER_BIT);
