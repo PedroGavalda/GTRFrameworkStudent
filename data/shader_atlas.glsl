@@ -17,6 +17,8 @@ skybox_gbuffer_pbr basic.vs skybox_gbuffer_pbr.fs
 deferred_ambient_directional_pbr quad.vs deferred_ambient_directional_pbr.fs
 light_volume_pbr basic.vs light_volume_pbr.fs
 ssao quad.vs ssao.fs
+sun quad.vs sun.fs
+godrays quad.vs godrays.fs
 tonemapper quad.vs tonemapper.fs
 
 
@@ -935,7 +937,6 @@ void main()
     FragColor = vec4(color, 0.0);
 }
 
-//JORDIANDREU
 
 \skybox_gbuffer_pbr.fs
 
@@ -1237,19 +1238,83 @@ uniform float u_average_lum;
 uniform float u_lumwhite2;
 uniform float u_igamma;
 uniform sampler2D u_texture;
+uniform sampler2D u_godrays_texture;
 
 out vec4 FragColor;
 
 void main(){
 	vec4 color = texture2D( u_texture, v_uv );
-	vec3 rgb = color.xyz;
+	vec3 scene_color = color.xyz;
+	vec3 godrays_color = texture(u_godrays_texture, v_uv).rgb;
 
-	float lum = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
+	vec3 hdr = scene_color + godrays_color;
+
+	float lum = dot(hdr, vec3(0.2126, 0.7152, 0.0722));
 	float L = (u_scale / u_average_lum) * lum;
 	float Ld = (L*(1.0 + L / u_lumwhite2)) / (1.0 + L);
 
-	rgb = (rgb / lum) * Ld;
-	rgb = max(rgb, vec3(0.001));
-	rgb = pow(rgb, vec3(u_igamma));
-	FragColor = vec4(rgb, color.a);
+	hdr = (hdr / lum) * Ld;
+	hdr = max(hdr, vec3(0.001));
+	hdr = pow(hdr, vec3(u_igamma));
+	FragColor = vec4(hdr, color.a);
+}
+
+\sun.fs
+#version 330 core
+
+in vec2 v_uv;
+out vec4 FragColor;
+uniform vec2 u_sun_uv;
+
+void main()
+{
+    vec2 diff = v_uv - u_sun_uv;
+    float dist = length(diff);
+
+	// valores del sol
+    float sun = exp(-dist * 20.0);
+    vec3 color = vec3(10.0) * sun;
+    FragColor = vec4(color, 1.0);
+}
+
+\godrays.fs
+#version 330 core
+
+in vec2 v_uv;
+out vec4 FragColor;
+
+uniform sampler2D u_texture;
+uniform sampler2D u_depth_texture;
+uniform vec2 u_sun_uv;
+
+uniform float u_decay;
+uniform float u_density;
+uniform float u_weight;
+uniform float u_exposure;
+
+const int NUM_SAMPLES = 100;
+
+void main()
+{
+    vec2 deltaTexCoord = (v_uv - u_sun_uv);      // vector del pixel al sol
+    deltaTexCoord *= 1.0 / float(NUM_SAMPLES) * u_density;
+    vec2 uv = v_uv;
+    float illuminationDecay = 1.0;
+    vec3 color = vec3(0.0);
+
+    for(int i = 0; i < NUM_SAMPLES; i++) {
+        uv -= deltaTexCoord;   // acercarse al sol
+        vec3 sample = texture(u_texture, uv).rgb;
+        float depth = texture(u_depth_texture, uv).r;
+
+        // si hay algo en medio bloqueamos los rayos
+        if(depth < 0.999)
+            sample = vec3(0.0);
+
+        sample *= illuminationDecay * u_weight;
+		color += sample;
+        illuminationDecay *= u_decay;
+    }
+
+    FragColor = vec4(color * u_exposure, 1.0);
 }
