@@ -1273,7 +1273,7 @@ void main()
 
 	// valores del sol
     float sun = exp(-dist * 20.0);
-    vec3 color = vec3(10.0) * sun;
+    vec3 color = vec3(5.0, 3.5, 0.0) * sun;
     FragColor = vec4(color, 1.0);
 }
 

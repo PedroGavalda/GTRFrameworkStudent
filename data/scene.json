@@ -148,5 +148,13 @@
 			"rotation":	[0, 1, 0, 0],
 			"filename":	"prefabs/mario/scene.gltf",
 			"type":	"PREFAB"
+		}, {
+			"name":	"meta_knight",
+			"layers":	3,
+			"position":	[1.270, 4.230, 1.618],
+			"scale":	[0.25, 0.25, 0.25],
+			"rotation":	[0, 1, 0, 0],
+			"filename":	"prefabs/meta_knight/scene.gltf",
+			"type":	"PREFAB"
 		}]
 }

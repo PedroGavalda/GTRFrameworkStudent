@@ -20,8 +20,8 @@ using namespace SCN;
 //some globals
 GFX::Mesh sphere;
 
-#define RES_WIDTH 2560
-#define RES_HEIGHT 1440
+#define RES_WIDTH 1920
+#define RES_HEIGHT 1200
 
 float u_igamma = (1.0f / 2.2f);
 
@@ -419,7 +419,7 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	//glViewport(0, 0, RES_WIDTH, RES_HEIGHT); sun_fbo.color_textures[0]->toViewport(); return;
 
 	godrays_fbo.bind();
-	glViewport(0, 0, RES_WIDTH / 2, RES_HEIGHT / 2);
+	//glViewport(0, 0, RES_WIDTH / 2, RES_HEIGHT / 2);
 	glClear(GL_COLOR_BUFFER_BIT);
 	
 	GFX::Shader* godrays_shader = GFX::Shader::Get("godrays");
