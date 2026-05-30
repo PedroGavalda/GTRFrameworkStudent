@@ -54,6 +54,8 @@ namespace SCN {
 		SCN::Scene* scene;
 		GFX::FBO lighting_FBO;
 		GFX::FBO ssao_fbo;
+		GFX::FBO godrays_fbo;
+		GFX::FBO sun_fbo;
 
 		//updated every frame
 		Renderer(const char* shaders_atlas_filename );

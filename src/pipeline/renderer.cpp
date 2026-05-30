@@ -39,10 +39,13 @@ Renderer::Renderer(const char* shader_atlas_filename)
 
 	sphere.createSphere(1.0f, 20, 20);
 	sphere.uploadToVRAM();
-	gbuffer_fbo.create(RES_WIDTH, RES_HEIGHT, 3, GL_RGBA, GL_UNSIGNED_BYTE, true);
+	gbuffer_fbo.create(RES_WIDTH, RES_HEIGHT, 3, GL_RGBA, GL_FLOAT, true);
 	illumination_fbo.create(RES_WIDTH, RES_HEIGHT, 1, GL_RGBA, GL_FLOAT, false);
 	ssao_fbo.create(RES_WIDTH, RES_HEIGHT, 1, GL_RGB, GL_UNSIGNED_BYTE, false);
-	ssao_samples = generateSpherePoints(64, 1.0f, false);
+	godrays_fbo.create(RES_WIDTH / 2, RES_HEIGHT / 2, 1, GL_RGBA, GL_FLOAT, false);
+	sun_fbo.create(RES_WIDTH / 2, RES_HEIGHT / 2, 1, GL_RGBA, GL_FLOAT, false);
+	ssao_samples = generateSpherePoints(32, 1.0f, true);
+	godrays_fbo.create(RES_WIDTH, RES_HEIGHT, 1, GL_RGBA, GL_FLOAT, false);
 }
 
 void Renderer::setupScene()
@@ -137,7 +140,6 @@ void Renderer::generateShadowMap(std::vector<sRenderable*> opaque) {
 
 		//SPOTLIGHT
 		else if (light->light_type == SPOT) {
-
 			float fov = (light->cone_info.y * 2.0f);
 			light_cameras[i]->setPerspective(fov, 1.0f, light->near_distance, light->max_distance);
 		}
@@ -295,6 +297,8 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 		}
 	}
 	gbuffer_fbo.unbind();
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	
 	GFX::checkGLErrors();
 
 	//SSAO
@@ -374,47 +378,96 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 
 	illumination_fbo.unbind();
 
-	glClearColor(0, 0, 0, 1);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	// GODRAYS
+	int dir_index = -1;
+	for (int i = 0; i < light_list.size(); ++i) {
+		if (light_list[i]->light_type == DIRECTIONAL) {
+			dir_index = i;
+			break;
+		}
+	}
 
+	vec2 sun_uv(-10.0f, -10.0f);
+	if (dir_index != -1)
+	{
+		vec3 sun_direction = light_list[dir_index]->root.getGlobalMatrix().frontVector();
+		vec3 sun_pos = camera->eye + sun_direction * 100000.0f;
+		vec4 clip = camera->viewprojection_matrix * vec4(sun_pos, 1.0f);
+
+		// si está detrás de la cámara no se hace
+		if (clip.w > 0.0f){
+			vec2 coords = vec2(clip.x / clip.w, clip.y / clip.w);
+			sun_uv = coords * 0.5f + vec2(0.5f, 0.5f);
+		}
+	}
+
+	sun_fbo.bind();
+	glViewport(0, 0, RES_WIDTH / 2, RES_HEIGHT / 2);
+	glDisable(GL_DEPTH_TEST);
+	glDepthMask(GL_FALSE);
+	glDisable(GL_BLEND);
+	glClearColor(0, 0, 0, 1);
+	glClear(GL_COLOR_BUFFER_BIT);
+	GFX::Shader* sun_shader = GFX::Shader::Get("sun");
+	sun_shader->enable();
+	sun_shader->setUniform("u_sun_uv", sun_uv);
+	GFX::Mesh::getQuad()->render(GL_TRIANGLES);
+	sun_shader->disable();
+	sun_fbo.unbind();
+
+	//testeo sol
+	//glViewport(0, 0, RES_WIDTH, RES_HEIGHT); sun_fbo.color_textures[0]->toViewport(); return;
+
+	godrays_fbo.bind();
+	//glViewport(0, 0, RES_WIDTH / 2, RES_HEIGHT / 2);
+	glClear(GL_COLOR_BUFFER_BIT);
+	
+	GFX::Shader* godrays_shader = GFX::Shader::Get("godrays");
+	if (godrays_shader) {
+		godrays_shader->enable();
+		godrays_shader->setTexture("u_texture", sun_fbo.color_textures[0], 0);
+		godrays_shader->setTexture("u_depth_texture", gbuffer_fbo.depth_texture, 1);
+		godrays_shader->setUniform("u_sun_uv", sun_uv);
+
+		// valores de los godrays que se pueden cambiar
+		godrays_shader->setUniform("u_decay", 0.95f);
+		godrays_shader->setUniform("u_density", 1.0f);
+		godrays_shader->setUniform("u_weight", 0.02f);
+		godrays_shader->setUniform("u_exposure", 1.0f);
+
+		glDisable(GL_DEPTH_TEST);
+		glDisable(GL_BLEND);
+		GFX::Mesh::getQuad()->render(GL_TRIANGLES);
+		godrays_shader->disable();
+	}
+	godrays_fbo.unbind();
+	
+	//testeo godrays
+	//godrays_fbo.color_textures[0]->toViewport(); return;
+
+	// TONEMAPPER
+	glViewport(0, 0, RES_WIDTH, RES_HEIGHT);
+	glClearColor(0, 0, 0, 1);
+	glClear(GL_COLOR_BUFFER_BIT);
 	GFX::Shader* tonemap_shader = GFX::Shader::Get("tonemapper");
 	tonemap_shader->enable();
-
 	tonemap_shader->setUniform("u_texture", illumination_fbo.color_textures[0], 0);
+	tonemap_shader->setTexture("u_godrays_texture", godrays_fbo.color_textures[0], 1);
 
+	// valores de tonemapper
 	tonemap_shader->setUniform("u_scale", 1.0f);
 	tonemap_shader->setUniform("u_average_lum", 1.0f);
 	tonemap_shader->setUniform("u_lumwhite2", 1.0f);
 	tonemap_shader->setUniform("u_igamma", u_igamma);
 
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_BLEND);
 	GFX::Mesh* quad = GFX::Mesh::getQuad();
 	quad->render(GL_TRIANGLES);
-
 	tonemap_shader->disable();
-	
-	//illumination_fbo.color_textures[0]->toViewport();
-	//ssao_fbo.color_textures[0]->toViewport();
-	//Camera* player_cam = camera;
-	//player_cam->enable();
-
-	//glDisable(GL_DEPTH_TEST);
-	//glDisable(GL_BLEND);
-	//GFX::Mesh* quad = GFX::Mesh::getQuad();
-	//GFX::Shader* light_pass_shader;
-	//light_pass_shader = GFX::Shader::Get("deferred_light");
-	//light_pass_shader->enable();
-	//sendLightUniforms(light_pass_shader);
-	//light_pass_shader->setUniform("u_shininess", global_shininess);
-	//light_pass_shader->setUniform("u_inverse_viewprojection", camera->inverse_viewprojection_matrix);
-	//light_pass_shader->setUniform("u_camera_position", camera->eye);
-	//light_pass_shader->setTexture("u_gbuffer_color", gbuffer_fbo.color_textures[0], 0);
-	//light_pass_shader->setTexture("u_gbuffer_normal", gbuffer_fbo.color_textures[1], 1);
-	//light_pass_shader->setTexture("u_gbuffer_depth", gbuffer_fbo.depth_texture, 2);
-	//quad->render(GL_TRIANGLES);
-
-	//light_pass_shader->disable();
-	//glEnable(GL_DEPTH_TEST);
-
+	glEnable(GL_DEPTH_TEST);
+	glDepthMask(GL_TRUE);
+	glDepthFunc(GL_LESS);
 
 	//HERE =====================
 	//TODO: RENDER RENDERABLES
@@ -424,7 +477,10 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	//	if (is_in_frustum(r, camera)) {
 	//		renderMeshWithMaterial(r->model, r->mesh, r->material, "phong");
 	//	}
-	//}
+	//}*/
+
+	// testeo de SSAO
+	//ssao_fbo.color_textures[0]->toViewport();
 }
 
 
@@ -692,6 +748,8 @@ void Renderer::renderAmbientAndDirectional(Camera* camera) {
 	shader->setTexture("u_gbuffer_normal", gbuffer_fbo.color_textures[1], 1);
 	shader->setTexture("u_gbuffer_depth", gbuffer_fbo.depth_texture, 2);
 
+	shader->setTexture("u_ssao_tex", ssao_fbo.color_textures[0], 5);
+
 	shader->setUniform("u_ambient_light", scene->ambient_light);
 	shader->setUniform("u_inverse_viewprojection", camera->inverse_viewprojection_matrix);
 	shader->setUniform("u_camera_position", camera->eye);
@@ -784,37 +842,38 @@ void Renderer::renderSSAO(Camera* camera)
 {
 	ssao_fbo.bind();
 
+	glDisable(GL_DEPTH_TEST);
+	glDepthMask(GL_FALSE);
+	glDisable(GL_BLEND);
+
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	GFX::Mesh* quad = GFX::Mesh::getQuad();
 	GFX::Shader* shader = GFX::Shader::Get("ssao");
+
 	shader->enable();
 
-
-	//samples
 	shader->setUniform("u_sample_count", ssao_sample_count);
 	shader->setUniform("u_sample_radius", ssao_radius);
 	shader->setUniform3Array("u_sample_pos", &ssao_samples[0].x, ssao_sample_count);
+	shader->setUniform("u_view_mat", camera->view_matrix);
 
-	//camara
 	mat4 proj = camera->projection_matrix;
 	mat4 proj_inv = proj;
 	proj_inv.inverse();
+
 	shader->setUniform("u_p_mat", proj);
 	shader->setUniform("u_inv_p_mat", proj_inv);
 
-	//inverse resolution
-	float inv_width = 1.0f / ssao_fbo.color_textures[0]->width;
-	float inv_height = 1.0f / ssao_fbo.color_textures[0]->height;
-
-	shader->setUniform("u_res_inv", vec2(inv_width, inv_height));
-	shader->setTexture("u_depth_tex", gbuffer_fbo.depth_texture, 0);
+	shader->setTexture("u_depth_tex",gbuffer_fbo.depth_texture, 0);
 	shader->setTexture("u_normal_tex", gbuffer_fbo.color_textures[1], 1);
-	shader->setUniform("u_v_mat", camera->view_matrix);
-
 
 	quad->render(GL_TRIANGLES);
+
 	shader->disable();
+
+	glDepthMask(GL_TRUE);
+	glEnable(GL_DEPTH_TEST);
 
 	ssao_fbo.unbind();
 }
