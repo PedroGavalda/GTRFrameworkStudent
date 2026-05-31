@@ -402,7 +402,7 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	}
 
 	sun_fbo.bind();
-	glViewport(0, 0, RES_WIDTH / 2, RES_HEIGHT / 2);
+	//glViewport(0, 0, RES_WIDTH / 2, RES_HEIGHT / 2);
 	glDisable(GL_DEPTH_TEST);
 	glDepthMask(GL_FALSE);
 	glDisable(GL_BLEND);
