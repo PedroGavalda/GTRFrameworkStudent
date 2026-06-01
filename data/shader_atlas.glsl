@@ -1292,7 +1292,7 @@ uniform float u_density;
 uniform float u_weight;
 uniform float u_exposure;
 
-const int NUM_SAMPLES = 100;
+const int NUM_SAMPLES = 64;
 
 void main()
 {
